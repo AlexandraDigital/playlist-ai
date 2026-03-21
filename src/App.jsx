@@ -213,6 +213,41 @@ const STYLES = `
   .suggest-all-btn { padding:9px 14px; background:transparent; border:1px solid var(--border); border-radius:8px;
     color:var(--muted); font-family:var(--font); font-size:12px; cursor:pointer; white-space:nowrap; }
 
+  /* INSTALL + PRO HEADER */
+  .header-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .header-badges { display:flex; gap:8px; align-items:center; }
+  .install-btn { padding:6px 12px; background:transparent; border:1px solid var(--border); border-radius:8px;
+    color:var(--muted); font-family:var(--font); font-size:12px; cursor:pointer; transition:all .15s; }
+  .install-btn:hover { border-color:#333; color:var(--sub); }
+  .pro-btn { padding:6px 12px; background:linear-gradient(135deg,#a855f7,#7c3aed); border:none; border-radius:8px;
+    color:#fff; font-family:var(--font); font-size:12px; font-weight:600; cursor:pointer; letter-spacing:.3px; }
+
+  /* PRO MODAL */
+  .pro-overlay { position:fixed; inset:0; background:rgba(0,0,0,.88); backdrop-filter:blur(10px); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  .pro-modal { background:#0c0c0c; border:1px solid #2a1f3d; border-radius:20px; width:100%; max-width:380px; overflow:hidden; }
+  .pro-header { background:linear-gradient(160deg,#1a0a2e,#0d0020,#000); padding:28px 24px 20px; text-align:center; }
+  .pro-crown { font-size:38px; margin-bottom:10px; }
+  .pro-title { font-size:24px; font-weight:700; letter-spacing:-0.5px;
+    background:linear-gradient(135deg,#a855f7,#c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .pro-subtitle { font-size:13px; color:var(--sub); margin-top:6px; }
+  .pro-features { padding:20px 24px; display:flex; flex-direction:column; gap:13px; }
+  .pro-feat { display:flex; align-items:center; gap:12px; }
+  .pro-feat-icon { width:32px; height:32px; border-radius:8px; background:var(--purple-dim);
+    display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .pro-feat-text { flex:1; }
+  .pro-feat-name { font-size:13px; font-weight:500; }
+  .pro-feat-desc { font-size:11px; color:var(--sub); margin-top:1px; }
+  .pro-divider { height:1px; background:var(--border); margin:0 24px; }
+  .pro-pricing { padding:16px 24px 8px; text-align:center; }
+  .pro-price { font-size:30px; font-weight:700; color:var(--text); }
+  .pro-price span { font-size:13px; font-weight:400; color:var(--sub); }
+  .pro-actions { padding:14px 24px 22px; display:flex; flex-direction:column; gap:8px; }
+  .pro-cta { width:100%; padding:14px; background:linear-gradient(135deg,#a855f7,#7c3aed); border:none; border-radius:12px;
+    color:#fff; font-family:var(--font); font-size:15px; font-weight:600; cursor:pointer; }
+  .pro-skip { width:100%; padding:10px; background:transparent; border:1px solid var(--border); border-radius:12px;
+    color:var(--muted); font-family:var(--font); font-size:13px; cursor:pointer; }
+
   /* PLAYER BAR */
   .player { background:var(--surface); border-top:1px solid var(--border);
     padding:12px 24px; display:flex; align-items:center; gap:14px; }
@@ -328,6 +363,8 @@ export default function App() {
   const [newPlName, setNewPlName] = useState("");
   const [aiSuggestions, setAiSuggestions] = useState([]); // songs AI suggested, not yet added
   const [aiSelected, setAiSelected] = useState(new Set()); // indices of selected suggestions
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showPro, setShowPro] = useState(false);
 
   const ytPlayerRef = useRef(null);
   const ytReadyRef = useRef(false);
@@ -339,6 +376,22 @@ export default function App() {
   const uploadTargetRef = useRef(null);
 
   useEffect(() => { playlistRef.current = playlist; }, [playlist]);
+
+  // PWA install prompt
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); setInstallPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  // Media Session action handlers (lock screen controls)
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.setActionHandler('play', () => togglePlay());
+    navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+    navigator.mediaSession.setActionHandler('nexttrack', () => skipNext());
+    navigator.mediaSession.setActionHandler('previoustrack', () => skipPrev());
+  }, []);
 
   // Load offline tracks
   useEffect(() => {
@@ -382,6 +435,19 @@ export default function App() {
     if (!t) return;
     setCurrentIdx(idx);
     setPlaying(true);
+
+    // Media Session: lock screen / notification controls
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: t.title || 'Unknown',
+        artist: t.artist || '',
+        album: 'Playlist AI',
+        artwork: t.thumbnail
+          ? [{ src: t.thumbnail, sizes: '640x640', type: 'image/jpeg' }]
+          : [],
+      });
+      navigator.mediaSession.playbackState = 'playing';
+    }
 
     clearTimeout(autoSaveTimerRef.current);
 
@@ -735,7 +801,22 @@ Include 6-10 songs. No explanations, just the JSON array.`;
       <div className="app">
         {/* HEADER */}
         <div className="header">
-          <div className="logo">Playlist AI</div>
+          <div className="header-top">
+            <div className="logo">Playlist AI</div>
+            <div className="header-badges">
+              {installPrompt && (
+                <button
+                  className="install-btn"
+                  onClick={async () => {
+                    installPrompt.prompt();
+                    const { outcome } = await installPrompt.userChoice;
+                    if (outcome === 'accepted') setInstallPrompt(null);
+                  }}
+                >⬇ Install</button>
+              )}
+              <button className="pro-btn" onClick={() => setShowPro(true)}>✦ Pro</button>
+            </div>
+          </div>
           <div className="input-row">
             <input
               className="main-input"
@@ -996,6 +1077,50 @@ Include 6-10 songs. No explanations, just the JSON array.`;
           </div>
         )}
       </div>
+
+      {/* PRO MODAL */}
+      {showPro && (
+        <div className="pro-overlay" onClick={() => setShowPro(false)}>
+          <div className="pro-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="pro-header">
+              <div className="pro-crown">👑</div>
+              <div className="pro-title">Playlist AI Pro</div>
+              <div className="pro-subtitle">Unlock the full experience</div>
+            </div>
+            <div className="pro-features">
+              {[
+                ['🎵', 'Unlimited AI Generations', 'No limits on playlist creation'],
+                ['🎧', 'Smart Mood Detection', 'BPM matching & energy analysis'],
+                ['🔄', 'Cross-device Sync', 'Your playlists on every device'],
+                ['👥', 'Collaborative Playlists', 'Share & edit with friends'],
+                ['📊', 'Listening Stats', 'Track your music habits'],
+                ['⚡', 'Auto-offline Everything', 'Auto-save all songs as you play'],
+              ].map(([icon, name, desc]) => (
+                <div key={name} className="pro-feat">
+                  <div className="pro-feat-icon">{icon}</div>
+                  <div className="pro-feat-text">
+                    <div className="pro-feat-name">{name}</div>
+                    <div className="pro-feat-desc">{desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="pro-divider" />
+            <div className="pro-pricing">
+              <div className="pro-price">$4.99 <span>/ month</span></div>
+            </div>
+            <div className="pro-actions">
+              <button
+                className="pro-cta"
+                onClick={() => alert('Coming soon! Pro payments launching shortly 🚀')}
+              >
+                Get Pro →
+              </button>
+              <button className="pro-skip" onClick={() => setShowPro(false)}>Maybe later</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
