@@ -1,36 +1,31 @@
+import Groq from 'groq-sdk';
+
+const groq = new Groq({
+  apiKey: process.env.VITE_GROQ_API_KEY,
+});
+
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).end();
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-  const apiKey = process.env.VITE_GROQ_API_KEY;
-  if (!apiKey) return res.status(500).json({ content: [{ type: "text", text: "Missing VITE_GROQ_API_KEY" }] });
+  const { messages } = req.body;
 
-  const { messages, system } = req.body;
+  if (!process.env.VITE_GROQ_API_KEY) {
+    return res.status(500).json({ error: 'Missing VITE_GROQ_API_KEY' });
+  }
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "llama3-8b-8192",
-        max_tokens: 1000,
-        messages: [
-          { role: "system", content: system || "You are a music playlist curator." },
-          ...(messages || []),
-        ],
-      }),
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages,
+      temperature: 0.7,
+      max_tokens: 1024,
     });
 
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || data.error?.message || "No response";
-    res.status(200).json({ content: [{ type: "text", text }] });
-  } catch (e) {
-    res.status(500).json({ content: [{ type: "text", text: "Error: " + e.message }] });
+    return res.status(200).json(completion.choices[0].message);
+  } catch (error) {
+    console.error('Groq API error:', error);
+    return res.status(500).json({ error: error.message });
   }
 }
