@@ -9,7 +9,16 @@ export async function onRequestPost(context) {
   }
 
   try {
-    const { messages } = await request.json();
+    const { system, messages } = await request.json();
+
+    // Build messages array with system prompt
+    const allMessages = [];
+    if (system) {
+      allMessages.push({ role: 'system', content: system });
+    }
+    if (messages && Array.isArray(messages)) {
+      allMessages.push(...messages);
+    }
 
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -19,7 +28,7 @@ export async function onRequestPost(context) {
       },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
-        messages,
+        messages: allMessages,
         temperature: 0.7,
         max_tokens: 1024,
       }),
@@ -34,7 +43,9 @@ export async function onRequestPost(context) {
       });
     }
 
-    return new Response(JSON.stringify(data.choices[0].message), {
+    // Return in Anthropic-compatible format that the frontend expects
+    const text = data.choices[0].message.content;
+    return new Response(JSON.stringify({ content: [{ text }] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
