@@ -53,6 +53,9 @@ const STYLES = `
   .app { display:grid; grid-template-rows:auto auto 1fr auto; height:100vh; max-width:840px; margin:0 auto; }
   ::-webkit-scrollbar { width:3px; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
 
+  /* Hidden YouTube player - must be in DOM for IFrame API */
+  #yt-player { position:fixed; bottom:-5px; right:-5px; width:2px; height:2px; opacity:0; pointer-events:none; z-index:-1; }
+
   /* HEADER */
   .header { padding:22px 24px 14px; }
   .logo { font-size:30px; font-weight:700; letter-spacing:-1.5px;
@@ -245,7 +248,7 @@ const STYLES = `
   .player-artist { font-size:11px; color:var(--muted); margin-top:1px; }
   .player-mode { font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
   .player-mode.stream { color:#555; } .player-mode.offline { color:var(--green); }
-  .player-mode.saving { color:var(--purple-light); }
+  .player-mode.saving { color:var(--purple-light); } .player-mode.loading { color:var(--muted); }
   .ctrls { display:flex; align-items:center; gap:8px; flex-shrink:0; }
   .ctrl { width:32px; height:32px; border-radius:50%; border:1px solid var(--border); background:transparent;
     color:var(--sub); cursor:pointer; display:flex; align-items:center; justify-content:center;
@@ -263,11 +266,12 @@ const PROMPTS = ["Late night lo-fi 📚","Road trip bangers 🚗","90s hip-hop �
 
 function totalDur(tracks) {
   const s = tracks.reduce((a, t) => {
-    const parts = (t.duration || "0:00").split(":");
+    const parts = (t.duration || "").split(":");
+    if (parts.length < 2) return a;
     const m = parseInt(parts[0], 10);
     const sec = parseInt(parts[1], 10);
-    if (isNaN(m)) return a;
-    return a + m * 60 + (isNaN(sec) ? 0 : sec);
+    if (isNaN(m) || isNaN(sec)) return a;
+    return a + m * 60 + sec;
   }, 0);
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -290,7 +294,7 @@ export default function App() {
   const [plName, setPlName] = useState("My Playlist");
   const [aiOpen, setAiOpen] = useState(false);
   const [msgs, setMsgs] = useState([{
-    role: "ai", text: "Hi! Tell me a vibe, mood, or genre and I'll build your playlist. 🎬",
+    role: "ai", text: "Hi! Tell me a vibe, mood, or genre and I'll build your playlist. 🎵",
     tracks: null
   }]);
   const [mainInput, setMainInput] = useState("");
@@ -298,21 +302,33 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [nowPlaying, setNowPlaying] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [dlStatus, setDlStatus] = useState({}); // videoId -> 'doing'|'done'|'err'
+  const [ytLoading, setYtLoading] = useState(false);
+  const [dlStatus, setDlStatus] = useState({});
   const [downloads, setDownloads] = useState([]);
-  const [blobUrls, setBlobUrls] = useState({}); // videoId -> blobUrl
+  const [blobUrls, setBlobUrls] = useState({});
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState({ title: "", artist: "", genre: "", duration: "" });
-  const [autoSaving, setAutoSaving] = useState(false); // shows "auto-saving" in player
+  const [autoSaving, setAutoSaving] = useState(false);
 
   const chatEndRef = useRef(null);
+  const headerRef = useRef(null);
+
+  // Refs for stale-closure-safe access in callbacks
+  const ytPlayer = useRef(null);
+  const ytReady = useRef(false);
+  const activePlayer = useRef("none"); // "yt" | "audio"
   const audioEl = useRef(new Audio());
   const blobUrlsRef = useRef({});
   const dlStatusRef = useRef({});
-  const headerRef = useRef(null);
+  const nowPlayingRef = useRef(null);
+  const playlistRef = useRef([]);
+  const downloadsRef = useRef([]);
 
-  // Keep dlStatusRef in sync
+  // Keep refs in sync
   useEffect(() => { dlStatusRef.current = dlStatus; }, [dlStatus]);
+  useEffect(() => { nowPlayingRef.current = nowPlaying; }, [nowPlaying]);
+  useEffect(() => { playlistRef.current = playlist; }, [playlist]);
+  useEffect(() => { downloadsRef.current = downloads; }, [downloads]);
 
   // Load offline tracks on mount
   useEffect(() => {
@@ -335,24 +351,67 @@ export default function App() {
     Object.values(blobUrlsRef.current).forEach(URL.revokeObjectURL);
   }, []);
 
-  // Auto-scroll chat
+  // Load YouTube IFrame API
   useEffect(() => {
-    if (aiOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs, loading, aiOpen]);
+    const initYTPlayer = () => {
+      ytPlayer.current = new window.YT.Player("yt-player", {
+        height: "1",
+        width: "1",
+        playerVars: { autoplay: 1, playsinline: 1, controls: 0 },
+        events: {
+          onReady: () => { ytReady.current = true; },
+          onStateChange: (e) => {
+            const S = window.YT?.PlayerState;
+            if (!S) return;
+            if (e.data === S.PLAYING) { setIsPlaying(true); setYtLoading(false); }
+            if (e.data === S.PAUSED) setIsPlaying(false);
+            if (e.data === S.BUFFERING) setYtLoading(true);
+            if (e.data === S.ENDED) {
+              setIsPlaying(false);
+              setYtLoading(false);
+              // Advance to next track
+              const curr = nowPlayingRef.current;
+              if (!curr) return;
+              const list = curr._offline ? downloadsRef.current : playlistRef.current;
+              const i = list.findIndex(t => t.videoId === curr.videoId);
+              const next = list[i + 1];
+              if (next) {
+                setTimeout(() => playTrackRef.current(next, curr._offline), 300);
+              }
+            }
+          },
+          onError: () => { setIsPlaying(false); setYtLoading(false); }
+        }
+      });
+    };
 
-  // Audio element events
+    if (window.YT?.Player) {
+      initYTPlayer();
+    } else {
+      window.onYouTubeIframeAPIReady = initYTPlayer;
+      if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+        const tag = document.createElement("script");
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(tag);
+      }
+    }
+
+    return () => {
+      try { ytPlayer.current?.destroy?.(); } catch {}
+    };
+  }, []);
+
+  // HTML5 audio events (for offline blobs)
   useEffect(() => {
     const audio = audioEl.current;
     const onEnd = () => {
       setIsPlaying(false);
-      setNowPlaying(prev => {
-        if (!prev) return prev;
-        const list = prev._offline ? downloads : playlist;
-        const i = list.findIndex(t => t.videoId === prev.videoId);
-        const next = list[i + 1];
-        if (next) setTimeout(() => playTrack(next, prev._offline), 400);
-        return prev;
-      });
+      const curr = nowPlayingRef.current;
+      if (!curr) return;
+      const list = curr._offline ? downloadsRef.current : playlistRef.current;
+      const i = list.findIndex(t => t.videoId === curr.videoId);
+      const next = list[i + 1];
+      if (next) setTimeout(() => playTrackRef.current(next, curr._offline), 300);
     };
     audio.addEventListener("ended", onEnd);
     audio.addEventListener("play", () => setIsPlaying(true));
@@ -362,18 +421,24 @@ export default function App() {
       audio.removeEventListener("play", () => setIsPlaying(true));
       audio.removeEventListener("pause", () => setIsPlaying(false));
     };
-  }, [downloads, playlist]);
+  }, []);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    if (aiOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs, loading, aiOpen]);
 
   /* ── Core download function (saves blob to IndexedDB) ──────── */
   const saveTrack = useCallback(async (track, signal) => {
     const vid = track.videoId;
-    if (!vid) return;
-    if (dlStatusRef.current[vid] === "done" || dlStatusRef.current[vid] === "doing") return;
+    if (!vid) return null;
+    if (dlStatusRef.current[vid] === "done" || dlStatusRef.current[vid] === "doing") return blobUrlsRef.current[vid] || null;
     setDlStatus(s => ({ ...s, [vid]: "doing" }));
     try {
       const r = await fetch(`/api/download?videoId=${vid}`, signal ? { signal } : {});
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const blob = await r.blob();
+      if (blob.size < 1000) throw new Error("Empty audio response");
       const rec = {
         videoId: vid, title: track.title, artist: track.artist,
         duration: track.duration, thumbnail: track.thumbnail, genre: track.genre,
@@ -399,40 +464,68 @@ export default function App() {
   const playTrack = useCallback((track, fromOffline = false) => {
     if (!track.videoId) return;
     const blobUrl = blobUrlsRef.current[track.videoId];
-    setNowPlaying({ ...track, _offline: fromOffline || !!blobUrl });
+    const useOffline = fromOffline || !!blobUrl;
 
-    if (blobUrl) {
-      // Play from local storage
+    setNowPlaying({ ...track, _offline: useOffline });
+    setIsPlaying(false);
+
+    if (useOffline && blobUrl) {
+      // Play from local blob (HTML5 audio)
+      activePlayer.current = "audio";
+      if (ytPlayer.current?.pauseVideo) {
+        try { ytPlayer.current.pauseVideo(); } catch {}
+      }
       audioEl.current.src = blobUrl;
       audioEl.current.play().catch(console.error);
     } else {
-      // Stream directly through our proxy API
-      audioEl.current.src = `/api/download?videoId=${track.videoId}`;
-      audioEl.current.play().catch(console.error);
+      // Play via YouTube IFrame (most reliable!)
+      activePlayer.current = "yt";
+      audioEl.current.pause();
+      setYtLoading(true);
+      if (ytReady.current && ytPlayer.current?.loadVideoById) {
+        try {
+          ytPlayer.current.loadVideoById({ videoId: track.videoId, suggestedQuality: "small" });
+        } catch (e) {
+          console.error("YT load error:", e);
+          setYtLoading(false);
+        }
+      } else {
+        // YT not ready yet — wait and retry
+        const retry = setInterval(() => {
+          if (ytReady.current && ytPlayer.current?.loadVideoById) {
+            clearInterval(retry);
+            try {
+              ytPlayer.current.loadVideoById({ videoId: track.videoId, suggestedQuality: "small" });
+            } catch {}
+          }
+        }, 200);
+        setTimeout(() => clearInterval(retry), 5000);
+      }
     }
   }, []);
 
-  /* ── Auto-save when a song starts streaming ─────────────────── */
+  // Store playTrack in ref so event handlers always have current version
+  const playTrackRef = useRef(playTrack);
+  useEffect(() => { playTrackRef.current = playTrack; }, [playTrack]);
+
+  /* ── Auto-save in background when streaming ─────────────────── */
   useEffect(() => {
     if (!nowPlaying?.videoId) return;
     const vid = nowPlaying.videoId;
-    if (blobUrlsRef.current[vid]) return; // already saved
+    if (blobUrlsRef.current[vid]) return;
     if (dlStatusRef.current[vid] === "done" || dlStatusRef.current[vid] === "doing") return;
 
     setAutoSaving(true);
     const controller = new AbortController();
-
-    // Slight delay so the streaming request gets priority
     const timer = setTimeout(async () => {
       const url = await saveTrack(nowPlaying, controller.signal);
       setAutoSaving(false);
-      // If the song is still playing and we now have a blob, update nowPlaying flag
       if (url) {
         setNowPlaying(prev =>
           prev?.videoId === vid ? { ...prev, _offline: true } : prev
         );
       }
-    }, 3000);
+    }, 4000);
 
     return () => {
       clearTimeout(timer);
@@ -443,20 +536,27 @@ export default function App() {
 
   const togglePlay = () => {
     if (!nowPlaying) return;
-    if (isPlaying) audioEl.current.pause();
-    else audioEl.current.play().catch(console.error);
+    if (activePlayer.current === "yt") {
+      try {
+        if (isPlaying) ytPlayer.current?.pauseVideo?.();
+        else ytPlayer.current?.playVideo?.();
+      } catch {}
+    } else {
+      if (isPlaying) audioEl.current.pause();
+      else audioEl.current.play().catch(console.error);
+    }
   };
 
   const skip = (dir) => {
     if (!nowPlaying) return;
-    const list = nowPlaying._offline ? downloads : playlist;
+    const list = nowPlaying._offline ? downloadsRef.current : playlistRef.current;
     const i = list.findIndex(t => t.videoId === nowPlaying.videoId);
     const next = list[i + dir];
     if (next) playTrack(next, nowPlaying._offline);
   };
 
   const addTrack = useCallback(async (track) => {
-    if (playlist.find(t => t.title === track.title && t.artist === track.artist)) return;
+    if (playlistRef.current.find(t => t.title === track.title && t.artist === track.artist)) return;
     const id = Date.now() + Math.random();
     setPlaylist(p => [...p, { ...track, id, videoId: null, thumbnail: null, ytStatus: "searching" }]);
     const yt = await ytSearch(track.title, track.artist);
@@ -466,23 +566,21 @@ export default function App() {
     if (yt?.videoId && blobUrlsRef.current[yt.videoId]) {
       setDlStatus(s => ({ ...s, [yt.videoId]: "done" }));
     }
-  }, [playlist]);
+  }, []);
 
   const addAll = (tracks) => tracks.forEach(t => addTrack(t));
 
   const removeTrack = (id) => {
     setPlaylist(p => p.filter(t => t.id !== id));
-    if (nowPlaying?.id === id) {
-      setNowPlaying(null);
-      audioEl.current.pause();
-      setIsPlaying(false);
+    const track = playlistRef.current.find(t => t.id === id);
+    if (nowPlaying?.videoId === track?.videoId) {
+      if (activePlayer.current === "yt") { try { ytPlayer.current?.stopVideo?.(); } catch {} }
+      else audioEl.current.pause();
+      setNowPlaying(null); setIsPlaying(false);
     }
   };
 
-  // Manual download button (same as saveTrack but triggered by user)
-  const downloadTrack = async (track) => {
-    await saveTrack(track);
-  };
+  const downloadTrack = (track) => saveTrack(track);
 
   const deleteDownload = async (videoId) => {
     await IDB.del(videoId);
@@ -494,9 +592,9 @@ export default function App() {
     setDownloads(prev => prev.filter(t => t.videoId !== videoId));
     setDlStatus(s => { const c = { ...s }; delete c[videoId]; return c; });
     if (nowPlaying?.videoId === videoId) {
-      setNowPlaying(null);
-      audioEl.current.pause();
-      setIsPlaying(false);
+      if (activePlayer.current === "yt") { try { ytPlayer.current?.stopVideo?.(); } catch {} }
+      else audioEl.current.pause();
+      setNowPlaying(null); setIsPlaying(false);
     }
   };
 
@@ -588,9 +686,9 @@ export default function App() {
           <button
             className={`track-act${dl === "done" ? " dl-done" : dl === "doing" ? " dl-doing" : dl === "err" ? " dl-err" : ""}`}
             onClick={() => downloadTrack(track)}
-            title={dl === "done" ? "Saved offline ✓" : dl === "doing" ? "Saving…" : "Save offline"}
+            title={dl === "done" ? "Saved offline ✓" : dl === "doing" ? "Saving…" : dl === "err" ? "Download failed — tap to retry" : "Save offline"}
           >
-            {dl === "done" ? "✓" : dl === "doing" ? <span className="spin">↻</span> : "⬇"}
+            {dl === "done" ? "✓" : dl === "doing" ? <span className="spin">↻</span> : dl === "err" ? "!" : "⬇"}
           </button>
         )}
         <button
@@ -605,6 +703,9 @@ export default function App() {
   return (
     <>
       <style>{STYLES}</style>
+
+      {/* Hidden YouTube IFrame player div — must stay in DOM */}
+      <div id="yt-player" />
 
       {/* ADD SONG MODAL */}
       {addOpen && (
@@ -745,8 +846,9 @@ export default function App() {
                   <button className="btn btn-p" onClick={() => setAddOpen(true)}>+ Add Song</button>
                   {playlist.length > 0 && <button className="btn btn-p" onClick={exportPlaylist}>↓ Export</button>}
                   <button className="btn btn-g" onClick={() => {
-                    setPlaylist([]); setNowPlaying(null);
-                    audioEl.current.pause(); setIsPlaying(false);
+                    setPlaylist([]);
+                    try { if (activePlayer.current === "yt") ytPlayer.current?.stopVideo?.(); else audioEl.current.pause(); } catch {}
+                    setNowPlaying(null); setIsPlaying(false);
                   }}>Clear</button>
                 </div>
               </div>
@@ -804,14 +906,14 @@ export default function App() {
               <div className="player-info">
                 <div className="player-title">{nowPlaying.title}</div>
                 <div className="player-artist">{nowPlaying.artist}</div>
-                <div className={`player-mode ${isOfflinePlaying ? "offline" : autoSaving ? "saving" : "stream"}`}>
-                  {isOfflinePlaying ? "⚡ offline" : autoSaving ? "↻ saving…" : "▶ streaming"}
+                <div className={`player-mode ${isOfflinePlaying ? "offline" : autoSaving ? "saving" : ytLoading ? "loading" : "stream"}`}>
+                  {isOfflinePlaying ? "⚡ offline" : autoSaving ? "↻ saving…" : ytLoading ? "○ loading…" : "▶ youtube"}
                 </div>
               </div>
               <div className="ctrls">
-                <button className="ctrl" onClick={() => skip(-1)} disabled={!nowPlaying}>⏮</button>
+                <button className="ctrl" onClick={() => skip(-1)}>⏮</button>
                 <button className="play-btn" onClick={togglePlay}>{isPlaying ? "⏸" : "▶"}</button>
-                <button className="ctrl" onClick={() => skip(1)} disabled={!nowPlaying}>⏭</button>
+                <button className="ctrl" onClick={() => skip(1)}>⏭</button>
               </div>
             </div>
           )}
