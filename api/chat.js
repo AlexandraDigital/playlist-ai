@@ -1,47 +1,59 @@
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+const https = require("https");
 
-  try {
-    const { prompt, message } = req.body;
-    const userInput = prompt || message;
-    if (!userInput) return res.status(400).json({ error: 'Missing prompt' });
+module.exports = async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).end();
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a music expert AI. When given a music vibe or prompt, respond with ONLY a numbered list of exactly 30 song recommendations, one per line, in this exact format:\n1. Song Title - Artist Name\n2. Song Title - Artist Name\n...\nNo extra text, no explanations, no markdown, no headers — just the numbered list of 30 songs.`,
-          },
-          { role: 'user', content: userInput },
-        ],
-        max_tokens: 1500,
-        temperature: 0.8,
-      }),
+  const { messages, system } = req.body;
+
+  // Build OpenAI-compatible messages array, prepending system prompt
+  const groqMessages = [
+    { role: "system", content: system || "You are a helpful music playlist curator." },
+    ...messages,
+  ];
+
+  const body = JSON.stringify({
+    model: "llama3-70b-8192",
+    max_tokens: 1000,
+    messages: groqMessages,
+  });
+
+  const options = {
+    hostname: "api.groq.com",
+    path: "/openai/v1/chat/completions",
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(body),
+      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+    },
+  };
+
+  return new Promise((resolve) => {
+    const apiReq = https.request(options, (apiRes) => {
+      let data = "";
+      apiRes.on("data", (chunk) => (data += chunk));
+      apiRes.on("end", () => {
+        try {
+          const parsed = JSON.parse(data);
+          // Convert Groq response to Anthropic-like shape so App.jsx needs no changes
+          const text = parsed.choices?.[0]?.message?.content || "";
+          res.status(apiRes.statusCode).json({ content: [{ type: "text", text }] });
+        } catch (e) {
+          res.status(500).json({ error: "Failed to parse Groq response" });
+        }
+        resolve();
+      });
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(500).json({ error: data.error?.message || 'Groq API error' });
-    }
-
-    const reply = data.choices?.[0]?.message?.content || '';
-    return res.status(200).json({ reply });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-}
+    apiReq.on("error", (e) => {
+      res.status(500).json({ error: e.message });
+      resolve();
+    });
+    apiReq.write(body);
+    apiReq.end();
+  });
+};
