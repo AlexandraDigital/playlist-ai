@@ -405,20 +405,9 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 1000,
-          system: `You are a music playlist curator AI. When the user describes a mood, genre, activity, or vibe, respond with:
-1. A brief, enthusiastic 1-2 sentence intro about the vibe
-2. Exactly 8 song suggestions in this JSON block:
-
-\`\`\`json
-[
-  {"title": "Song Title", "artist": "Artist Name", "genre": "Genre", "duration": "3:42"},
-  ...
-]
-\`\`\`
-
-Keep durations realistic (between 2:30 and 6:00). Genres should be short (e.g. "Hip-Hop", "Indie Rock", "Lo-Fi", "Electronic"). Mix well-known and lesser-known artists. After the JSON, add one sentence about what makes this selection special. Return ONLY this format.`,
+          system: `You are a music playlist curator AI. When the user describes a mood, genre, activity, or vibe, respond with:\n1. A brief, enthusiastic 1-2 sentence intro about the vibe\n2. Exactly 8 song suggestions in this JSON block:\n\n\`\`\`json\n[\n  {"title": "Song Title", "artist": "Artist Name", "genre": "Genre", "duration": "3:42"},\n  ...\n]\n\`\`\`\n\nKeep durations realistic (between 2:30 and 6:00). Genres should be short (e.g. "Hip-Hop", "Indie Rock", "Lo-Fi", "Electronic"). Mix well-known and lesser-known artists. After the JSON, add one sentence about what makes this selection special. Return ONLY this format.`,
           messages: [{ role: "user", content: userText }]
         })
       });
