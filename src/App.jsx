@@ -100,10 +100,8 @@ export default function App() {
   const [spotifyStatus, setSpotifyStatus] = useState(''); // 'loading' | 'done' | 'failed' | ''
 
   // ── Smart Offline Picks state ──────────────────────────────────
-  const [smartDlContext, setSmartDlContext] = useState('');
-  const [smartDlSuggestions, setSmartDlSuggestions] = useState([]);
   const [isSmartDl, setIsSmartDl] = useState(false);
-  const [showSmartDl, setShowSmartDl] = useState(false);
+  const [smartDlDone, setSmartDlDone] = useState(false);
 
   const audioRef = useRef(null);
   const blobUrls = useRef({});
@@ -404,40 +402,38 @@ export default function App() {
   }
 
   // ── AI Smart Offline Picks ────────────────────────────────────────
-  async function getSmartDownloadSuggestions() {
+  async function aiDownloadPicks() {
     if (!playlist.length || isSmartDl) return;
     setIsSmartDl(true);
-    setSmartDlSuggestions([]);
+    setSmartDlDone(false);
     try {
       const res = await fetch('/api/suggest-downloads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           songs: playlist.map(t => ({ title: t.title, artist: t.artist })),
-          context: smartDlContext.trim() || undefined,
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setSmartDlSuggestions(data.suggestions || []);
-    } catch (e) {
-      setError(`Smart download error: ${e.message}`);
-    } finally {
-      setIsSmartDl(false);
-    }
-  }
-
-  function downloadAllSuggested() {
-    const toDownload = smartDlSuggestions
-      .map(s =>
-        playlist.find(
+      const suggestions = data.suggestions || [];
+      // Immediately download all suggested tracks
+      suggestions.forEach(s => {
+        const track = playlist.find(
           t =>
             t.title.toLowerCase() === s.title.toLowerCase() &&
             t.artist.toLowerCase() === s.artist.toLowerCase()
-        )
-      )
-      .filter(t => t?.videoId && !offlineIds.has(t.videoId) && !downloading.has(t.videoId));
-    toDownload.forEach(t => downloadOffline({ stopPropagation: () => {} }, t));
+        );
+        if (track?.videoId && !offlineIds.has(track.videoId) && !downloading.has(track.videoId)) {
+          downloadOffline({ stopPropagation: () => {} }, track);
+        }
+      });
+      setSmartDlDone(true);
+    } catch (e) {
+      setError(`AI download error: ${e.message}`);
+    } finally {
+      setIsSmartDl(false);
+    }
   }
 
   const currentTrack = currentIdx !== null ? playlist[currentIdx] : null;
@@ -619,108 +615,17 @@ export default function App() {
           {playlist.length > 0 && (
             <div className="smart-dl-section">
               <button
-                className="toggle-smart-btn"
-                onClick={() => { setShowSmartDl(s => !s); setSmartDlSuggestions([]); }}
+                className="ai-offline-btn"
+                onClick={aiDownloadPicks}
+                disabled={isSmartDl}
+                title="AI picks and downloads the best songs from your playlist for offline listening"
               >
-                {showSmartDl ? '✕ Close' : '🤖 AI Smart Offline Picks'}
+                {isSmartDl
+                  ? <><span className="spinner" /> AI picking songs…</>
+                  : smartDlDone
+                  ? '✅ AI Downloads Started!'
+                  : '🤖 AI Download Picks'}
               </button>
-
-              {showSmartDl && (
-                <div className="smart-dl-panel">
-                  <p className="smart-dl-hint">Tell the AI your situation and it'll pick the best songs to save offline.</p>
-                  <div className="smart-dl-input-row">
-                    <input
-                      className="smart-dl-input"
-                      value={smartDlContext}
-                      onChange={e => setSmartDlContext(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && getSmartDownloadSuggestions()}
-                      placeholder="e.g. long flight, road trip, gym workout, no Wi-Fi all weekend…"
-                    />
-                    <button
-                      className="generate-btn smart-dl-go-btn"
-                      onClick={getSmartDownloadSuggestions}
-                      disabled={isSmartDl}
-                    >
-                      {isSmartDl ? <><span className="spinner" /> Analyzing…</> : '✨ Suggest'}
-                    </button>
-                  </div>
-
-                  {smartDlSuggestions.length > 0 && (
-                    <div className="smart-dl-results">
-                      <div className="smart-dl-results-header">
-                        <span>🎯 AI recommends {smartDlSuggestions.length} songs to download:</span>
-                        <button
-                          className="dl-all-btn"
-                          onClick={downloadAllSuggested}
-                          disabled={smartDlSuggestions.every(s => {
-                            const t = playlist.find(p => p.title.toLowerCase() === s.title.toLowerCase());
-                            return !t?.videoId || offlineIds.has(t.videoId) || downloading.has(t.videoId);
-                          })}
-                        >
-                          ⬇️ Download All
-                        </button>
-                      </div>
-                      {smartDlSuggestions.map((s, i) => {
-                        const track = playlist.find(
-                          t =>
-                            t.title.toLowerCase() === s.title.toLowerCase() &&
-                            t.artist.toLowerCase() === s.artist.toLowerCase()
-                        );
-                        const isAlreadyOffline = track?.videoId && offlineIds.has(track.videoId);
-                        const isDlg = track?.videoId && downloading.has(track.videoId);
-                        const prog = track?.videoId ? dlProgress[track.videoId] : null;
-                        const pct = prog?.total
-                          ? Math.min(100, Math.round((prog.received / prog.total) * 100))
-                          : null;
-
-                        return (
-                          <div key={i} className="smart-dl-item">
-                            <div className="smart-dl-info">
-                              <div className="smart-dl-title">{s.title} — {s.artist}</div>
-                              <div className="smart-dl-reason">💡 {s.reason}</div>
-                              {isDlg && (
-                                <div className="dl-progress-wrap" style={{ marginTop: 4 }}>
-                                  <div
-                                    className={`dl-progress-bar ${pct === null ? 'indeterminate' : ''}`}
-                                    style={pct !== null ? { width: `${pct}%` } : {}}
-                                  />
-                                  <span className="dl-progress-label">
-                                    {pct !== null ? `${pct}%` : prog?.received ? formatBytes(prog.received) : 'Saving…'}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="smart-dl-action">
-                              {isAlreadyOffline && (
-                                <span className="offline-badge" title="Already saved offline">💾</span>
-                              )}
-                              {!isAlreadyOffline && isDlg && (
-                                <span className="spinner" style={{ width: 14, height: 14 }} />
-                              )}
-                              {!isAlreadyOffline && !isDlg && track?.videoId && (
-                                <button
-                                  className="download-btn"
-                                  onClick={e => downloadOffline(e, track)}
-                                  title="Save for offline"
-                                >⬇️</button>
-                              )}
-                              {!track?.videoId && !track?.loading && (
-                                <span className="smart-dl-no-id" title="Add this song to your playlist first">—</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {!isSmartDl && smartDlSuggestions.length === 0 && (
-                    <div className="smart-dl-empty">
-                      Hit <strong>Suggest</strong> and the AI will analyse your playlist and pick the best tracks to have ready offline 🎧
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
