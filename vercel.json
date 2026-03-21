@@ -3,9 +3,11 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "functions": {
-    "api/stream-audio.js": { "maxDuration": 30 },
-    "api/download-audio.js": { "maxDuration": 30 },
-    "api/chat.js": { "maxDuration": 25 },
+    "api/stream-audio.js":    { "maxDuration": 30 },
+    "api/download-audio.js":  { "maxDuration": 30 },
+    "api/youtube-search.js":  { "maxDuration": 15 },
+    "api/search.js":          { "maxDuration": 15 },
+    "api/chat.js":            { "maxDuration": 25 },
     "api/suggest-downloads.js": { "maxDuration": 25 }
   }
 }

@@ -1,58 +1,65 @@
-export const config = { runtime: 'edge' };
+// api/youtube-search.js
+// Searches YouTube via Invidious public instances — much more reliable than Piped.
+// Races all instances in parallel; first valid result wins.
 
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://api.piped.projectsegfau.lt',
-  'https://pipedapi.leptons.xyz',
-  'https://piped-api.garudalinux.org',
-  'https://pa.il.sable.cc',
-  'https://pipedapi.reallyaweso.me',
+const INVIDIOUS_INSTANCES = [
+  'https://y.com.sb',
+  'https://inv.riverside.rocks',
+  'https://invidious.tiekoetter.com',
+  'https://invidious.flokinet.to',
+  'https://vid.puffyan.us',
+  'https://yewtu.be',
+  'https://invidious.snopyta.org',
+  'https://invidious.kavin.rocks',
 ];
 
-function extractVideoId(url) {
-  if (!url) return null;
-  const m = url.match(/[?&]v=([^&]+)/) || url.match(/\/watch\?v=([^&]+)/);
-  return m ? m[1] : null;
-}
-
 async function searchInstance(base, q) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 6000);
   try {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 6000);
     const r = await fetch(
-      `${base}/search?q=${encodeURIComponent(q + ' audio')}&filter=videos`,
-      { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: ac.signal }
+      `${base}/api/v1/search?q=${encodeURIComponent(q)}&type=video&fields=videoId,title,author,videoThumbnails,lengthSeconds`,
+      {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        signal: ac.signal,
+      }
     );
     clearTimeout(timer);
     if (!r.ok) return null;
-    const data = await r.json();
-    const items = data.items || [];
-    // Prefer music/audio videos, then any video
+    const items = await r.json();
+    if (!Array.isArray(items) || !items.length) return null;
+
+    // Prefer tracks 1–10 min (a real song), then fallback to any
     const video =
-      items.find(i => (i.type === 'stream' || i.url?.includes('watch')) && i.duration && i.duration < 600) ||
-      items.find(i => i.type === 'stream' || i.url?.includes('watch'));
-    if (!video) return null;
-    const videoId = extractVideoId(video.url);
-    if (!videoId) return null;
-    return { videoId, title: video.title || '', thumbnail: video.thumbnail || null };
+      items.find(i => i.videoId && i.lengthSeconds > 60 && i.lengthSeconds < 600) ||
+      items.find(i => i.videoId);
+    if (!video?.videoId) return null;
+
+    const thumbnail =
+      video.videoThumbnails?.find(t => t.quality === 'high')?.url ||
+      video.videoThumbnails?.[0]?.url ||
+      `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`;
+
+    return { videoId: video.videoId, title: video.title || '', thumbnail };
   } catch {
+    clearTimeout(timer);
     return null;
   }
 }
 
-export default async function handler(req) {
-  const { searchParams } = new URL(req.url);
-  const q = searchParams.get('q');
-  if (!q) {
-    return new Response(JSON.stringify({ error: 'q required' }), { status: 400 });
-  }
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // Race all instances — fastest working one wins
+  const q = req.query?.q;
+  if (!q) return res.status(400).json({ error: 'q required' });
+
   const result = await new Promise(resolve => {
     let resolved = false;
-    let pending = PIPED_INSTANCES.length;
-    PIPED_INSTANCES.forEach(base => {
-      searchInstance(base, q).then(r => {
+    let pending = INVIDIOUS_INSTANCES.length;
+    INVIDIOUS_INSTANCES.forEach(base => {
+      searchInstance(base, q + ' audio').then(r => {
         pending--;
         if (r && !resolved) { resolved = true; resolve(r); }
         else if (pending === 0 && !resolved) resolve(null);
@@ -60,11 +67,6 @@ export default async function handler(req) {
     });
   });
 
-  if (!result) {
-    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
-  }
-
-  return new Response(JSON.stringify(result), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  if (!result) return res.status(404).json({ error: 'Not found on any source' });
+  return res.status(200).json(result);
 }

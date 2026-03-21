@@ -117,7 +117,7 @@ export default function App() {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
-  // ── Spotify enrichment ────────────────────────────────────────────
+  // ── Spotify enrichment (album art & recommendations) ──────────────
   async function enrichWithSpotify(songs) {
     return batchRun(songs, async song => {
       try {
@@ -141,24 +141,37 @@ export default function App() {
     }, 5);
   }
 
-  // ── Manual song search via Spotify ───────────────────────────────
+  // ── Manual song search via Groq ───────────────────────────────────
+  // Groq identifies the song(s) from any query, then Invidious finds the video.
   async function searchSongs() {
     if (!searchQuery.trim() || isSearching) return;
     setIsSearching(true);
     setSearchResults([]);
     try {
-      // Search Spotify first
-      const res = await fetch(
-        `/api/spotify?q=${encodeURIComponent(searchQuery)}&limit=10&type=search`
-      );
+      // Ask Groq to identify the song(s)
+      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.tracks?.length) {
-          setSearchResults(data.tracks.map(t => ({ ...t, videoId: null })));
+          // Resolve videoIds in parallel via Invidious
+          const enriched = await Promise.all(
+            data.tracks.map(async t => {
+              try {
+                const ytRes = await fetch(
+                  `/api/youtube-search?q=${encodeURIComponent(`${t.title} ${t.artist}`)}`
+                );
+                const ytData = ytRes.ok ? await ytRes.json() : {};
+                return { ...t, videoId: ytData.videoId || null, albumArt: null };
+              } catch {
+                return { ...t, videoId: null, albumArt: null };
+              }
+            })
+          );
+          setSearchResults(enriched);
           return;
         }
       }
-      // Fallback: YouTube search
+      // Fallback: direct Invidious search with raw query
       const ytRes = await fetch(`/api/youtube-search?q=${encodeURIComponent(searchQuery)}`);
       if (ytRes.ok) {
         const ytData = await ytRes.json();
@@ -169,7 +182,6 @@ export default function App() {
             artist: parts[1]?.trim() || '',
             videoId: ytData.videoId,
             albumArt: null,
-            previewUrl: null,
           }]);
         }
       }
@@ -554,7 +566,7 @@ export default function App() {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && searchSongs()}
-              placeholder="Search Spotify — e.g. Hotel California, Kendrick Lamar…"
+              placeholder="Search any song — e.g. Hotel California, Kendrick Lamar, sad rainy day song…"
               autoFocus
             />
             <button className="generate-btn" onClick={searchSongs} disabled={isSearching}>
