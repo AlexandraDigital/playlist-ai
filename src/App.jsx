@@ -143,12 +143,26 @@ export default function App() {
 
   // ── Add song to playlist ─────────────────────────────────────────
   async function addToPlaylist(song) {
+    if (!song?.title || !song?.artist) return;
     const key = `${song.title}__${song.artist}`;
-    if (playlist.some(t => `${t.title}__${t.artist}` === key)) return;
-    // spread song so albumArt/previewUrl/spotifyUrl come along
-    setPlaylist(prev => [...prev, { ...song, loading: true }]);
+
+    // Use updater fn so the duplicate check always sees latest state (no stale closure)
+    let alreadyAdded = false;
+    setPlaylist(prev => {
+      if (prev.some(t => `${t.title}__${t.artist}` === key)) {
+        alreadyAdded = true;
+        return prev;
+      }
+      return [...prev, { ...song, videoId: null, loading: true }];
+    });
+
+    // Give React a tick to flush the state update
+    await new Promise(r => setTimeout(r, 0));
+    if (alreadyAdded) return;
+
     try {
       const res = await fetch(`/api/youtube-search?q=${encodeURIComponent(`${song.title} ${song.artist}`)}`);
+      if (!res.ok) throw new Error(`Search ${res.status}`);
       const data = await res.json();
       setPlaylist(prev =>
         prev.map(t =>
@@ -157,7 +171,7 @@ export default function App() {
             : t
         )
       );
-    } catch {
+    } catch (err) {
       setPlaylist(prev =>
         prev.map(t => `${t.title}__${t.artist}` === key ? { ...t, loading: false } : t)
       );
