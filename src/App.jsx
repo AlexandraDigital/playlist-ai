@@ -3,6 +3,197 @@ import { useState, useRef, useEffect, useCallback } from "react";
 const PAYPAL_CLIENT_ID = "AXNMWGjP12GGzjRS4hXihdVeXUZNsvT38UqJzJSoI0N9WsV67zo5fyV46CbB5Sp_f2wKnLzvfgyoieI8";
 const FREE_GEN_LIMIT = 3;
 
+const TRANSLATIONS = {
+  en: {
+    install: "⬇ Install",
+    placeholder: "Type a vibe, genre, or mood…",
+    generate: "Generate",
+    freeLeft: (n) => `${n} free generation${n === 1 ? "" : "s"} left today`,
+    upgradePro: "Upgrade to Pro for unlimited →",
+    tabPlaylist: "Playlist",
+    tabDownloads: "Downloads",
+    tabMyPlaylists: "My Playlists",
+    tabStats: "Stats",
+    aiPlaceholder: "Ask for any playlist…",
+    addSongs: (n) => `Add ${n} song${n !== 1 ? "s" : ""} →`,
+    all: "All", none: "None",
+    songTitle: "Song title *", artist: "Artist", duration: "Duration (e.g. 3:24)",
+    addSong: "Add Song", cancel: "Cancel",
+    addSongBtn: "+ Add Song", save: "Save ✦", clear: "Clear",
+    emptyPlaylist: "Your playlist is empty",
+    emptySub: "Type a vibe above or add songs manually",
+    uploadFile: "+ Upload File",
+    noOffline: "No offline tracks yet",
+    offlineSubPro: "Songs auto-download as you play them",
+    offlineSubFree: "Hit ⬇ on any song to save it offline",
+    syncTitle: "🔄 Cross-Device Sync",
+    syncCodeLabel: "Your sync code:",
+    copy: "Copy", push: "↑ Push", pull: "↓ Pull Sync",
+    syncPlaceholder: "Enter code to import…",
+    copied: "Copied!",
+    syncLockText: "Cross-device sync — access playlists on any device",
+    syncLockCta: "Upgrade to Pro →",
+    newPlaceholder: "New playlist name…",
+    newBtn: "+ New",
+    noPlaylists: "No saved playlists yet",
+    noPlaylistsSub: "Build a playlist and hit Save ✦ to keep it",
+    songs: (n) => `${n} song${n !== 1 ? "s" : ""}`,
+    load: "Load",
+    statsTitle: "📊 Listening Stats",
+    noPlays: "No plays yet",
+    noPlaysSub: "Start listening to see your top tracks",
+    topTracks: "Your top tracks",
+    plays: (n) => `${n} play${n !== 1 ? "s" : ""}`,
+    proTitle: "Playlist AI Pro",
+    proSubtitle: "Unlock the full experience — one time, forever",
+    proFeatures: [
+      ["🎵","Unlimited AI Generations","No daily limits on playlist creation"],
+      ["⚡","Auto-Offline Everything","Songs download automatically as you play"],
+      ["🎧","Background Playback","Music keeps playing when you switch apps"],
+      ["🔄","Cross-Device Sync","Your playlists on every device with a sync code"],
+      ["📊","Listening Stats","See your most played tracks"],
+      ["🎵","Priority Song Search","Faster YouTube matching & better results"],
+    ],
+    proPrice: "$9.99",
+    proOneTime: "✓ Lifetime access — no subscription",
+    maybeLater: "Maybe later",
+    proSuccess: "You're Pro!",
+    proSuccessSub: "All features are unlocked. Enjoy unlimited music ✦",
+    letsGo: "Let's Go →",
+    chips: ["chill vibes","hype workout","late night drive","sad hours","focus mode","k-pop bops"],
+    savedOffline: "Saved offline", retryDownload: "Retry download", saveOffline: "Save offline",
+    retrySearch: "Retry search", uploadAudio: "Upload audio file", remove: "Remove",
+    noSyncCode: "No playlists to sync", enterCode: "Enter a sync code",
+    langLabel: "EN",
+  },
+  es: {
+    install: "⬇ Instalar",
+    placeholder: "Escribe un ambiente, género o estado de ánimo…",
+    generate: "Generar",
+    freeLeft: (n) => `${n} generación${n === 1 ? "" : "es"} gratuita${n === 1 ? "" : "s"} hoy`,
+    upgradePro: "Actualiza a Pro para ilimitadas →",
+    tabPlaylist: "Lista",
+    tabDownloads: "Descargas",
+    tabMyPlaylists: "Mis Listas",
+    tabStats: "Estadísticas",
+    aiPlaceholder: "Pide cualquier lista de música…",
+    addSongs: (n) => `Agregar ${n} canción${n !== 1 ? "es" : ""} →`,
+    all: "Todo", none: "Ninguna",
+    songTitle: "Título de canción *", artist: "Artista", duration: "Duración (ej. 3:24)",
+    addSong: "Agregar", cancel: "Cancelar",
+    addSongBtn: "+ Agregar", save: "Guardar ✦", clear: "Limpiar",
+    emptyPlaylist: "Tu lista está vacía",
+    emptySub: "Escribe un ambiente arriba o añade canciones",
+    uploadFile: "+ Subir Archivo",
+    noOffline: "Sin pistas sin conexión",
+    offlineSubPro: "Las canciones se descargan automáticamente",
+    offlineSubFree: "Presiona ⬇ en cualquier canción para guardarla",
+    syncTitle: "🔄 Sync Entre Dispositivos",
+    syncCodeLabel: "Tu código de sync:",
+    copy: "Copiar", push: "↑ Subir", pull: "↓ Importar",
+    syncPlaceholder: "Ingresa código para importar…",
+    copied: "¡Copiado!",
+    syncLockText: "Sync entre dispositivos — accede desde cualquier lugar",
+    syncLockCta: "Actualiza a Pro →",
+    newPlaceholder: "Nombre de nueva lista…",
+    newBtn: "+ Nueva",
+    noPlaylists: "Sin listas guardadas",
+    noPlaylistsSub: "Crea una lista y presiona Guardar ✦",
+    songs: (n) => `${n} canción${n !== 1 ? "es" : ""}`,
+    load: "Cargar",
+    statsTitle: "📊 Estadísticas",
+    noPlays: "Sin reproducciones aún",
+    noPlaysSub: "Empieza a escuchar para ver tus más tocadas",
+    topTracks: "Tus canciones favoritas",
+    plays: (n) => `${n} vez${n !== 1 ? " veces" : ""}`,
+    proTitle: "Playlist AI Pro",
+    proSubtitle: "Desbloquea todo — un pago, para siempre",
+    proFeatures: [
+      ["🎵","Generaciones IA Ilimitadas","Sin límites diarios en la creación de listas"],
+      ["⚡","Todo Auto-Offline","Las canciones se descargan al reproducir"],
+      ["🎧","Reproducción en Fondo","La música sigue al cambiar de app"],
+      ["🔄","Sync Entre Dispositivos","Tus listas en cada dispositivo con un código"],
+      ["📊","Estadísticas de Escucha","Ve tus canciones más reproducidas"],
+      ["🎵","Búsqueda Prioritaria","Mejor búsqueda en YouTube & mejores resultados"],
+    ],
+    proPrice: "$9.99",
+    proOneTime: "✓ Acceso de por vida — sin suscripción",
+    maybeLater: "Tal vez después",
+    proSuccess: "¡Eres Pro!",
+    proSuccessSub: "Todas las funciones activas. ¡Disfruta la música ilimitada ✦",
+    letsGo: "¡Vamos! →",
+    chips: ["ambiente tranquilo","entrenamiento intenso","conducción nocturna","horas tristes","modo concentración","k-pop hits"],
+    savedOffline: "Guardado offline", retryDownload: "Reintentar", saveOffline: "Guardar offline",
+    retrySearch: "Buscar de nuevo", uploadAudio: "Subir archivo de audio", remove: "Eliminar",
+    noSyncCode: "Sin listas para sincronizar", enterCode: "Ingresa un código de sync",
+    langLabel: "ES",
+  },
+  zh: {
+    install: "⬇ 安装",
+    placeholder: "输入氛围、曲风或心情…",
+    generate: "生成",
+    freeLeft: (n) => `今日剩余 ${n} 次免费生成`,
+    upgradePro: "升级Pro获得无限次数 →",
+    tabPlaylist: "播放列表",
+    tabDownloads: "下载",
+    tabMyPlaylists: "我的列表",
+    tabStats: "统计",
+    aiPlaceholder: "请求任何播放列表…",
+    addSongs: (n) => `添加 ${n} 首歌曲 →`,
+    all: "全部", none: "全不选",
+    songTitle: "歌曲名 *", artist: "艺术家", duration: "时长（如 3:24）",
+    addSong: "添加歌曲", cancel: "取消",
+    addSongBtn: "+ 添加", save: "保存 ✦", clear: "清空",
+    emptyPlaylist: "播放列表为空",
+    emptySub: "在上方输入氛围或手动添加歌曲",
+    uploadFile: "+ 上传文件",
+    noOffline: "暂无离线曲目",
+    offlineSubPro: "歌曲播放时自动下载",
+    offlineSubFree: "点击 ⬇ 保存歌曲到离线",
+    syncTitle: "🔄 跨设备同步",
+    syncCodeLabel: "你的同步码：",
+    copy: "复制", push: "↑ 上传", pull: "↓ 拉取同步",
+    syncPlaceholder: "输入同步码以导入…",
+    copied: "已复制！",
+    syncLockText: "跨设备同步 — 在任何设备访问你的列表",
+    syncLockCta: "升级Pro →",
+    newPlaceholder: "新播放列表名称…",
+    newBtn: "+ 新建",
+    noPlaylists: "暂无保存的播放列表",
+    noPlaylistsSub: "创建播放列表并点击保存 ✦",
+    songs: (n) => `${n} 首歌`,
+    load: "加载",
+    statsTitle: "📊 听歌统计",
+    noPlays: "暂无播放记录",
+    noPlaysSub: "开始听歌以查看你的热门曲目",
+    topTracks: "你的热门曲目",
+    plays: (n) => `${n} 次`,
+    proTitle: "Playlist AI Pro",
+    proSubtitle: "解锁全部功能 — 一次付费，永久使用",
+    proFeatures: [
+      ["🎵","无限AI生成","无每日创建限制"],
+      ["⚡","自动离线保存","播放时自动下载歌曲"],
+      ["🎧","后台播放","切换应用时音乐继续播放"],
+      ["🔄","跨设备同步","用同步码在任何设备访问"],
+      ["📊","听歌统计","查看最常播放的曲目"],
+      ["🎵","优先歌曲搜索","更快的YouTube匹配与更好的结果"],
+    ],
+    proPrice: "$9.99",
+    proOneTime: "✓ 终身访问 — 无需订阅",
+    maybeLater: "稍后再说",
+    proSuccess: "你是Pro用户！",
+    proSuccessSub: "所有功能已解锁，享受无限音乐 ✦",
+    letsGo: "开始使用 →",
+    chips: ["轻松氛围","高强度健身","深夜驾车","伤感时光","专注模式","K-pop热曲"],
+    savedOffline: "已离线保存", retryDownload: "重试下载", saveOffline: "保存离线",
+    retrySearch: "重新搜索", uploadAudio: "上传音频文件", remove: "移除",
+    noSyncCode: "没有播放列表可同步", enterCode: "请输入同步码",
+    langLabel: "中文",
+  },
+};
+
+
+
 /* ── IndexedDB helpers ──────────────────────────────────────── */
 const IDB = {
   _db: null,
@@ -263,6 +454,13 @@ const STYLES = `
   .suggest-all-btn { padding:9px 14px; background:transparent; border:1px solid var(--border); border-radius:8px;
     color:var(--muted); font-family:var(--font); font-size:12px; cursor:pointer; white-space:nowrap; }
 
+  /* LANGUAGE BUTTONS */
+  .lang-btns { display:flex; gap:6px; align-items:center; margin-top:8px; }
+  .lang-btn { padding:5px 11px; background:var(--card); border:1px solid var(--border); border-radius:20px;
+    font-size:12px; color:var(--sub); cursor:pointer; transition:all .15s; font-family:var(--font); white-space:nowrap; }
+  .lang-btn:hover { border-color:var(--purple); color:var(--purple-light); }
+  .lang-btn.active { background:var(--purple-dim); border-color:var(--purple); color:var(--purple-light); font-weight:500; }
+
   /* INSTALL + PRO HEADER */
   .header-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
   .header-badges { display:flex; gap:8px; align-items:center; }
@@ -460,6 +658,8 @@ export default function App() {
   const [aiSelected, setAiSelected] = useState(new Set());
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showPro, setShowPro] = useState(false);
+  const [language, setLanguage] = useState('en');
+  const tr = TRANSLATIONS[language] || TRANSLATIONS.en;
 
   // Pro state
   const [isPro, setIsPro] = useState(() => localStorage.getItem("playlist-ai-pro") === "true");
@@ -798,7 +998,8 @@ export default function App() {
     setAiMsgs([...newMsgs, { role: "thinking", content: "thinking…" }]);
 
     try {
-      const systemPrompt = `You are a music playlist AI. When asked for a playlist, respond ONLY with a JSON array like:
+      const langInstruction = language === 'es' ? ' Suggest songs primarily by Spanish-language artists or popular in Spanish-speaking countries.' : language === 'zh' ? ' Suggest songs primarily by Mandarin/Cantonese artists or popular in Chinese-speaking regions.' : '';
+      const systemPrompt = `You are a music playlist AI.${langInstruction} When asked for a playlist, respond ONLY with a JSON array like:
 [{"title":"Song Name","artist":"Artist Name","duration":"3:45"},...]
 Include 6-10 songs. No explanations, just the JSON array.`;
       const reply = await aiChat([
@@ -914,7 +1115,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
 
   /* ── Cross-device sync ──────────────────────────────────────── */
   const handlePushSync = useCallback(async () => {
-    if (!savedPlaylists.length) { setSyncStatus({ msg: "No playlists to sync", type: "err" }); return; }
+    if (!savedPlaylists.length) { setSyncStatus({ msg: tr.noSyncCode, type: "err" }); return; }
     setSyncStatus({ msg: "Syncing…", type: "" });
     try {
       await syncPush(syncCode, savedPlaylists);
@@ -926,7 +1127,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
 
   const handlePullSync = useCallback(async () => {
     const code = importCode.trim().toUpperCase();
-    if (!code) { setSyncStatus({ msg: "Enter a sync code", type: "err" }); return; }
+    if (!code) { setSyncStatus({ msg: tr.enterCode, type: "err" }); return; }
     setSyncStatus({ msg: "Loading…", type: "" });
     try {
       const data = await syncPull(code);
@@ -978,7 +1179,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
           {!isOffline && t.videoId && (
             <button
               className={`t-btn${dl === "done" || isOfflineSaved ? " dl-done" : dl === "error" ? " dl-err" : dl === "loading" ? " dl-ing" : ""}`}
-              title={dl === "done" || isOfflineSaved ? "Saved offline" : dl === "error" ? "Retry download" : "Save offline"}
+              title={dl === "done" || isOfflineSaved ? tr.savedOffline : dl === "error" ? tr.retryDownload : tr.saveOffline}
               onClick={() => downloadAndSave(t)}
               disabled={dl === "loading"}
             >
@@ -986,7 +1187,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
             </button>
           )}
           {!isOffline && t.ytStatus === "notfound" && (
-            <button className="t-btn retry" title="Retry search" onClick={() => {
+            <button className="t-btn retry" title={tr.retrySearch} onClick={() => {
               setPlaylist((p) => p.map((x) => x.id === t.id ? { ...x, ytStatus: "searching" } : x));
               ytSearch(t.title, t.artist).then((yt) => {
                 if (yt?.videoId) setPlaylist((p) => p.map((x) => x.id === t.id ? { ...x, videoId: yt.videoId, thumbnail: x.thumbnail || yt.thumbnail, ytStatus: "found" } : x));
@@ -994,10 +1195,10 @@ Include 6-10 songs. No explanations, just the JSON array.`;
             }}>↺</button>
           )}
           {!isOffline && (
-            <button className="t-btn upload" title="Upload audio file"
+            <button className="t-btn upload" title={tr.uploadAudio}
               onClick={() => { uploadTargetRef.current = { track: t }; uploadFileRef.current?.click(); }}>⬆</button>
           )}
-          <button className="t-btn remove" title="Remove" onClick={() => {
+          <button className="t-btn remove" title={tr.remove} onClick={() => {
             if (isOffline) {
               IDB.del(t.videoId).then(() => IDB.getAll().then(setOfflineTracks));
             } else {
@@ -1032,7 +1233,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                   installPrompt.prompt();
                   const { outcome } = await installPrompt.userChoice;
                   if (outcome === "accepted") setInstallPrompt(null);
-                }}>⬇ Install</button>
+                }}>{tr.install}</button>
               )}
               {isPro ? (
                 <span className="pro-badge">👑 Pro</span>
@@ -1044,20 +1245,27 @@ Include 6-10 songs. No explanations, just the JSON array.`;
           <div className="input-row">
             <input
               className="main-input"
-              placeholder="Type a vibe, genre, or mood…"
+              placeholder={tr.placeholder}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
             />
             <button className="gen-btn" onClick={handleGenerate} disabled={aiLoading}>
-              {aiLoading ? "…" : "Generate"}
+              {aiLoading ? "…" : tr.generate}
             </button>
+          </div>
+          <div className="lang-btns">
+            {["en","es","zh"].map((l) => (
+              <button key={l} className={`lang-btn${language === l ? " active" : ""}`} onClick={() => setLanguage(l)}>
+                {l === "en" ? "🇺🇸 EN" : l === "es" ? "🇪🇸 ES" : "🇨🇳 中文"}
+              </button>
+            ))}
           </div>
           {!isPro && (
             <div className="gen-limit">
-              {Math.max(0, FREE_GEN_LIMIT - aiGenCount)} free generation{aiGenCount >= FREE_GEN_LIMIT - 1 ? "" : "s"} left today
+              {tr.freeLeft(Math.max(0, FREE_GEN_LIMIT - aiGenCount))}
               {aiGenCount >= FREE_GEN_LIMIT && " — "}
-              {aiGenCount >= FREE_GEN_LIMIT && <span style={{ color: "var(--purple-light)", cursor: "pointer" }} onClick={() => setShowPro(true)}>Upgrade to Pro for unlimited →</span>}
+              {aiGenCount >= FREE_GEN_LIMIT && <span style={{ color: "var(--purple-light)", cursor: "pointer" }} onClick={() => setShowPro(true)}>{tr.upgradePro}</span>}
             </div>
           )}
         </div>
@@ -1065,17 +1273,17 @@ Include 6-10 songs. No explanations, just the JSON array.`;
         {/* TABS */}
         <div className="tabs">
           <button className={`tab${tab === "playlist" ? " active" : ""}`} onClick={() => setTab("playlist")}>
-            Playlist {playlist.length > 0 && <span className="tab-badge">{playlist.length}</span>}
+            {tr.tabPlaylist} {playlist.length > 0 && <span className="tab-badge">{playlist.length}</span>}
           </button>
           <button className={`tab${tab === "offline" ? " active" : ""}`} onClick={() => setTab("offline")}>
-            Downloads {offlineTracks.length > 0 && <span className="tab-badge">{offlineTracks.length}</span>}
+            {tr.tabDownloads} {offlineTracks.length > 0 && <span className="tab-badge">{offlineTracks.length}</span>}
           </button>
           <button className={`tab${tab === "myplaylists" ? " active" : ""}`} onClick={() => setTab("myplaylists")}>
-            My Playlists {savedPlaylists.length > 0 && <span className="tab-badge">{savedPlaylists.length}</span>}
+            {tr.tabMyPlaylists} {savedPlaylists.length > 0 && <span className="tab-badge">{savedPlaylists.length}</span>}
           </button>
           {isPro && topTracks.length > 0 && (
             <button className={`tab${tab === "stats" ? " active" : ""}`} onClick={() => setTab("stats")}>
-              Stats
+              {tr.tabStats}
             </button>
           )}
         </div>
@@ -1094,7 +1302,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
             )}
             {aiMsgs.length === 0 && (
               <div className="chip-row">
-                {CHIPS.map((c) => <button key={c} className="chip" onClick={() => sendAI(c)}>{c}</button>)}
+                {tr.chips.map((c) => <button key={c} className="chip" onClick={() => sendAI(c)}>{c}</button>)}
               </div>
             )}
             {aiSuggestions.length > 0 && (
@@ -1125,17 +1333,17 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                       setAiSelected(new Set());
                       setTab("playlist");
                     }}>
-                    Add {aiSelected.size} song{aiSelected.size !== 1 ? "s" : ""} →
+                    {tr.addSongs(aiSelected.size)}
                   </button>
-                  <button className="suggest-all-btn" onClick={() => setAiSelected(new Set(aiSuggestions.map((_, i) => i)))}>All</button>
-                  <button className="suggest-all-btn" onClick={() => setAiSelected(new Set())}>None</button>
+                  <button className="suggest-all-btn" onClick={() => setAiSelected(new Set(aiSuggestions.map((_, i) => i)))}>{tr.all}</button>
+                  <button className="suggest-all-btn" onClick={() => setAiSelected(new Set())}>{tr.none}</button>
                 </div>
               </>
             )}
             <div className="ai-input-row">
               <input
                 className="ai-input"
-                placeholder="Ask for any playlist…"
+                placeholder={tr.aiPlaceholder}
                 value={aiInput}
                 onChange={(e) => setAiInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && sendAI()}
@@ -1152,20 +1360,20 @@ Include 6-10 songs. No explanations, just the JSON array.`;
         {showAdd && (
           <div className="add-form">
             <div className="add-form-row">
-              <input className="add-input" placeholder="Song title *" value={addForm.title}
+              <input className="add-input" placeholder={tr.songTitle} value={addForm.title}
                 onChange={(e) => setAddForm((f) => ({ ...f, title: e.target.value }))}
                 onKeyDown={(e) => e.key === "Enter" && submitAdd()} autoFocus />
-              <input className="add-input" placeholder="Artist" value={addForm.artist}
+              <input className="add-input" placeholder={tr.artist} value={addForm.artist}
                 onChange={(e) => setAddForm((f) => ({ ...f, artist: e.target.value }))}
                 onKeyDown={(e) => e.key === "Enter" && submitAdd()} />
-              <input className="add-input" placeholder="Duration (e.g. 3:24)" value={addForm.duration}
+              <input className="add-input" placeholder={tr.duration} value={addForm.duration}
                 style={{ maxWidth: 140 }}
                 onChange={(e) => setAddForm((f) => ({ ...f, duration: e.target.value }))}
                 onKeyDown={(e) => e.key === "Enter" && submitAdd()} />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="add-submit" onClick={submitAdd}>Add Song</button>
-              <button className="add-cancel" onClick={() => setShowAdd(false)}>Cancel</button>
+              <button className="add-submit" onClick={submitAdd}>{tr.addSong}</button>
+              <button className="add-cancel" onClick={() => setShowAdd(false)}>{tr.cancel}</button>
             </div>
           </div>
         )}
@@ -1177,18 +1385,18 @@ Include 6-10 songs. No explanations, just the JSON array.`;
               <div className="pl-header">
                 <input className="pl-name" value={plName} onChange={(e) => setPlName(e.target.value)} />
                 <div className="pl-actions">
-                  <button className="icon-btn" onClick={() => { setShowAdd((v) => !v); setShowAI(false); }}>+ Add Song</button>
-                  {playlist.length > 0 && <button className="save-pl-btn" onClick={savePlaylist}>Save ✦</button>}
+                  <button className="icon-btn" onClick={() => { setShowAdd((v) => !v); setShowAI(false); }}>{tr.addSongBtn}</button>
+                  {playlist.length > 0 && <button className="save-pl-btn" onClick={savePlaylist}>{tr.save}</button>}
                   {playlist.length > 0 && (
-                    <button className="icon-btn danger" onClick={() => { setPlaylist([]); setCurrentIdx(null); }}>Clear</button>
+                    <button className="icon-btn danger" onClick={() => { setPlaylist([]); setCurrentIdx(null); }}>{tr.clear}</button>
                   )}
                 </div>
               </div>
               {playlist.length === 0 ? (
                 <div className="empty">
                   <div className="empty-icon">♫</div>
-                  <div className="empty-text">Your playlist is empty</div>
-                  <div className="empty-sub">Type a vibe above or add songs manually</div>
+                  <div className="empty-text">{tr.emptyPlaylist}</div>
+                  <div className="empty-sub">{tr.emptySub}</div>
                 </div>
               ) : (
                 playlist.map((t, i) => renderRow(t, i, false))
@@ -1199,7 +1407,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
           {tab === "offline" && (
             <>
               <div className="pl-header">
-                <span style={{ fontSize: 15, fontWeight: 600 }}>Downloads</span>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{tr.tabDownloads}</span>
                 <div className="pl-actions">
                   <button className="icon-btn" onClick={() => { uploadTargetRef.current = { isNew: true }; uploadFileRef.current?.click(); }}>
                     + Upload File
@@ -1209,9 +1417,9 @@ Include 6-10 songs. No explanations, just the JSON array.`;
               {offlineTracks.length === 0 ? (
                 <div className="empty">
                   <div className="empty-icon">⚡</div>
-                  <div className="empty-text">No offline tracks yet</div>
+                  <div className="empty-text">{tr.noOffline}</div>
                   <div className="empty-sub">
-                    {isPro ? "Songs auto-download as you play them" : "Hit ⬇ on any song to save it offline"}
+                    {isPro ? tr.offlineSubPro : tr.offlineSubFree}
                   </div>
                 </div>
               ) : (
@@ -1223,29 +1431,29 @@ Include 6-10 songs. No explanations, just the JSON array.`;
           {tab === "myplaylists" && (
             <>
               <div className="pl-header">
-                <span style={{ fontSize: 15, fontWeight: 600 }}>My Playlists</span>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{tr.tabMyPlaylists}</span>
               </div>
 
               {/* Cross-device sync (Pro) */}
               {isPro ? (
                 <div className="sync-panel">
-                  <div className="sync-panel-title">🔄 Cross-Device Sync</div>
+                  <div className="sync-panel-title">{tr.syncTitle}</div>
                   <div className="sync-code-row">
-                    <span style={{ fontSize: 12, color: "var(--sub)" }}>Your sync code:</span>
+                    <span style={{ fontSize: 12, color: "var(--sub)" }}>{tr.syncCodeLabel}</span>
                     <span className="sync-code">{syncCode}</span>
-                    <button className="sync-btn" onClick={() => { navigator.clipboard.writeText(syncCode); setSyncStatus({ msg: "Copied!", type: "ok" }); }}>Copy</button>
-                    <button className="sync-btn" onClick={handlePushSync}>↑ Push</button>
+                    <button className="sync-btn" onClick={() => { navigator.clipboard.writeText(syncCode); setSyncStatus({ msg: tr.copied, type: "ok" }); }}>{tr.copy}</button>
+                    <button className="sync-btn" onClick={handlePushSync}>{tr.push}</button>
                   </div>
                   <div className="sync-row">
                     <input
                       className="sync-input"
-                      placeholder="Enter code to import…"
+                      placeholder={tr.syncPlaceholder}
                       value={importCode}
                       onChange={(e) => setImportCode(e.target.value.toUpperCase())}
                       onKeyDown={(e) => e.key === "Enter" && handlePullSync()}
                       maxLength={6}
                     />
-                    <button className="sync-btn" onClick={handlePullSync}>↓ Pull Sync</button>
+                    <button className="sync-btn" onClick={handlePullSync}>{tr.pull}</button>
                   </div>
                   {syncStatus.msg && <span className={`sync-status${syncStatus.type ? ` ${syncStatus.type}` : ""}`}>{syncStatus.msg}</span>}
                 </div>
@@ -1253,25 +1461,25 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                 <div className="pro-lock" onClick={() => setShowPro(true)}>
                   <span className="pro-lock-icon">🔄</span>
                   <div>
-                    <div className="pro-lock-text">Cross-device sync — access playlists on any device</div>
-                    <div className="pro-lock-cta">Upgrade to Pro →</div>
+                    <div className="pro-lock-text">{tr.syncLockText}</div>
+                    <div className="pro-lock-cta">{tr.syncLockCta}</div>
                   </div>
                 </div>
               )}
 
               {/* New playlist form */}
               <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                <input className="add-input" placeholder="New playlist name…" value={newPlName}
+                <input className="add-input" placeholder={tr.newPlaceholder} value={newPlName}
                   onChange={(e) => setNewPlName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && createNewPlaylist()} />
-                <button className="save-pl-btn" onClick={createNewPlaylist}>+ New</button>
+                <button className="save-pl-btn" onClick={createNewPlaylist}>{tr.newBtn}</button>
               </div>
 
               {savedPlaylists.length === 0 ? (
                 <div className="empty">
                   <div className="empty-icon">🎵</div>
-                  <div className="empty-text">No saved playlists yet</div>
-                  <div className="empty-sub">Build a playlist and hit Save ✦ to keep it</div>
+                  <div className="empty-text">{tr.noPlaylists}</div>
+                  <div className="empty-sub">{tr.noPlaylistsSub}</div>
                 </div>
               ) : (
                 <div className="pl-list">
@@ -1280,10 +1488,10 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                       <div className="pl-card-icon">🎵</div>
                       <div className="pl-card-info">
                         <div className="pl-card-name">{pl.name}</div>
-                        <div className="pl-card-count">{pl.songs.length} songs</div>
+                        <div className="pl-card-count">{tr.songs(pl.songs.length)}</div>
                       </div>
                       <div className="pl-card-actions" onClick={(e) => e.stopPropagation()}>
-                        <button className="save-pl-btn" onClick={() => loadPlaylist(pl)}>Load</button>
+                        <button className="save-pl-btn" onClick={() => loadPlaylist(pl)}>{tr.load}</button>
                         <button className="icon-btn danger" onClick={() => deletePlaylist(pl.id)}>✕</button>
                       </div>
                     </div>
@@ -1296,17 +1504,17 @@ Include 6-10 songs. No explanations, just the JSON array.`;
           {tab === "stats" && isPro && (
             <>
               <div className="pl-header">
-                <span style={{ fontSize: 15, fontWeight: 600 }}>📊 Listening Stats</span>
+                <span style={{ fontSize: 15, fontWeight: 600 }}>{tr.statsTitle}</span>
               </div>
               {topTracks.length === 0 ? (
                 <div className="empty">
                   <div className="empty-icon">📊</div>
-                  <div className="empty-text">No plays yet</div>
-                  <div className="empty-sub">Start listening to see your top tracks</div>
+                  <div className="empty-text">{tr.noPlays}</div>
+                  <div className="empty-sub">{tr.noPlaysSub}</div>
                 </div>
               ) : (
                 <div className="stats-panel">
-                  <div className="stats-title">Your top tracks</div>
+                  <div className="stats-title">{tr.topTracks}</div>
                   {topTracks.map(([, data], i) => (
                     <div key={i} className="stats-row">
                       <div className="stats-rank">{i + 1}</div>
@@ -1314,7 +1522,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                         <div className="stats-song">{data.title}</div>
                         <div className="stats-artist">{data.artist}</div>
                       </div>
-                      <div className="stats-plays">{data.plays} play{data.plays !== 1 ? "s" : ""}</div>
+                      <div className="stats-plays">{tr.plays(data.plays)}</div>
                     </div>
                   ))}
                 </div>
@@ -1354,26 +1562,19 @@ Include 6-10 songs. No explanations, just the JSON array.`;
             {isPro ? (
               <div className="pro-success">
                 <div className="pro-success-icon">👑</div>
-                <div className="pro-success-title">You're Pro!</div>
-                <div className="pro-success-sub">All features are unlocked. Enjoy unlimited music ✦</div>
-                <button className="pro-cta" onClick={() => setShowPro(false)}>Let's Go →</button>
+                <div className="pro-success-title">{tr.proSuccess}</div>
+                <div className="pro-success-sub">{tr.proSuccessSub}</div>
+                <button className="pro-cta" onClick={() => setShowPro(false)}>{tr.letsGo}</button>
               </div>
             ) : (
               <>
                 <div className="pro-header">
                   <div className="pro-crown">👑</div>
-                  <div className="pro-title">Playlist AI Pro</div>
-                  <div className="pro-subtitle">Unlock the full experience — one time, forever</div>
+                  <div className="pro-title">{tr.proTitle}</div>
+                  <div className="pro-subtitle">{tr.proSubtitle}</div>
                 </div>
                 <div className="pro-features">
-                  {[
-                    ["🎵", "Unlimited AI Generations", "No daily limits on playlist creation"],
-                    ["⚡", "Auto-Offline Everything", "Songs download automatically as you play"],
-                    ["🎧", "Background Playback", "Music keeps playing when you switch apps"],
-                    ["🔄", "Cross-Device Sync", "Your playlists on every device with a sync code"],
-                    ["📊", "Listening Stats", "See your most played tracks"],
-                    ["🎵", "Priority Song Search", "Faster YouTube matching & better results"],
-                  ].map(([icon, name, desc]) => (
+                  {tr.proFeatures.map(([icon, name, desc]) => (
                     <div key={name} className="pro-feat">
                       <div className="pro-feat-icon">{icon}</div>
                       <div className="pro-feat-text">
@@ -1385,12 +1586,12 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                 </div>
                 <div className="pro-divider" />
                 <div className="pro-pricing">
-                  <div className="pro-price">$9.99 <span>one-time</span></div>
-                  <div className="pro-one-time">✓ Lifetime access — no subscription</div>
+                  <div className="pro-price">{tr.proPrice} <span>one-time</span></div>
+                  <div className="pro-one-time">{tr.proOneTime}</div>
                 </div>
                 <div className="pro-actions">
                   <div ref={paypalContainerRef} className="paypal-container" />
-                  <button className="pro-skip" onClick={() => setShowPro(false)}>Maybe later</button>
+                  <button className="pro-skip" onClick={() => setShowPro(false)}>{tr.maybeLater}</button>
                 </div>
               </>
             )}
