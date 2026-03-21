@@ -3,157 +3,115 @@ import { useState, useRef, useEffect, useCallback } from "react";
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #08000f;
-    --surface: #0f0019;
-    --card: #160025;
-    --border: #2a0048;
-    --purple: #9333ea;
-    --purple-light: #d8b4fe;
-    --purple-mid: #a855f7;
-    --purple-dim: rgba(147,51,234,0.13);
-    --text: #faf5ff;
-    --muted: #7c6b9e;
-    --font: 'Inter', sans-serif;
-  }
-  body { background:var(--bg); color:var(--text); font-family:var(--font); min-height:100vh; }
-  .app { display:grid; grid-template-rows:auto 1fr auto; height:100vh; max-width:860px; margin:0 auto; position:relative; }
+  body { background: #000; color: #fff; font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+  .app { max-width: 480px; margin: 0 auto; padding: 48px 20px 120px; display: flex; flex-direction: column; gap: 20px; }
 
   /* HEADER */
-  .header { display:flex; align-items:center; gap:12px; padding:15px 22px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,rgba(147,51,234,0.07) 0%,transparent 100%); }
-  .logo { font-size:18px; font-weight:700; letter-spacing:-.5px; }
-  .logo span { color:var(--purple-light); font-weight:300; }
-  .yt-badge { font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#f87171; background:rgba(255,0,0,.08); border:1px solid rgba(255,0,0,.2); padding:3px 9px; border-radius:20px; }
-  .header-right { margin-left:auto; display:flex; align-items:center; gap:10px; }
-  .track-count-label { font-size:12px; color:var(--muted); }
-  .track-count-label strong { color:var(--purple-light); font-weight:500; }
-  .ai-toggle-btn { display:flex; align-items:center; gap:7px; padding:7px 15px; border-radius:20px; background:var(--purple-dim); border:1px solid rgba(147,51,234,.4); color:var(--purple-light); font-family:var(--font); font-size:12px; font-weight:500; cursor:pointer; transition:all .15s; }
-  .ai-toggle-btn:hover { background:rgba(147,51,234,.2); border-color:var(--purple-mid); }
-  .ai-toggle-btn.active { background:var(--purple); color:white; border-color:var(--purple); box-shadow:0 0 18px rgba(147,51,234,.4); }
-  .ai-dot { width:5px; height:5px; background:currentColor; border-radius:50%; animation:pulse 2s ease-in-out infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .hero { text-align: center; margin-bottom: 8px; }
+  .hero-title { font-size: 38px; font-weight: 700; letter-spacing: -1px; background: linear-gradient(135deg, #a855f7, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; display: inline-flex; align-items: center; gap: 10px; }
+  .hero-note { -webkit-text-fill-color: #a855f7; }
+  .hero-sub { color: #888; font-size: 15px; margin-top: 10px; line-height: 1.5; }
 
-  /* MAIN */
-  .main { padding:22px; overflow-y:auto; display:flex; flex-direction:column; gap:18px; }
+  /* INPUT ROW */
+  .input-row { display: flex; gap: 10px; align-items: center; }
+  .vibe-input { flex: 1; background: #1a1a1a; border: none; border-radius: 12px; padding: 14px 16px; font-size: 14px; color: #fff; font-family: 'Inter', sans-serif; outline: none; }
+  .vibe-input::placeholder { color: #555; }
+  .gen-btn { background: #7c3aed; border: none; border-radius: 12px; padding: 14px 20px; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: 'Inter', sans-serif; transition: background .15s; flex-shrink: 0; }
+  .gen-btn:hover { background: #6d28d9; }
+  .gen-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-  /* AI DRAWER */
-  .backdrop { position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.5); backdrop-filter:blur(2px); }
-  .backdrop.hidden { display:none; }
-  .ai-drawer { position:fixed; top:55px; left:0; right:0; max-width:860px; margin:0 auto; background:var(--surface); border:1px solid var(--border); border-top:none; border-radius:0 0 18px 18px; z-index:50; overflow:hidden; transition:max-height .3s ease, opacity .25s ease; box-shadow:0 28px 70px rgba(0,0,0,.7), 0 0 40px rgba(147,51,234,.08); }
-  .ai-drawer.open { max-height:540px; opacity:1; }
-  .ai-drawer.closed { max-height:0; opacity:0; pointer-events:none; }
-  .drawer-header { padding:13px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
-  .drawer-title { font-size:10px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase; color:var(--muted); }
-  .drawer-close { width:26px; height:26px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer; font-size:12px; transition:all .12s; display:flex; align-items:center; justify-content:center; }
-  .drawer-close:hover { border-color:var(--purple); color:var(--purple-light); }
+  /* SEARCH PILL */
+  .search-pill { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px solid #2a2a2a; border-radius: 999px; padding: 10px 24px; color: #aaa; font-size: 14px; cursor: pointer; background: transparent; font-family: 'Inter', sans-serif; transition: all .15s; width: fit-content; margin: 0 auto; }
+  .search-pill:hover { border-color: #7c3aed; color: #c084fc; }
 
-  /* CHAT */
-  .chat-area { overflow-y:auto; padding:14px 18px; display:flex; flex-direction:column; gap:14px; max-height:290px; }
-  .chat-area::-webkit-scrollbar { width:3px; }
-  .chat-area::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
-  .msg { display:flex; gap:10px; animation:fadeUp .2s ease; }
-  @keyframes fadeUp { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
-  .msg-avatar { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; font-weight:700; }
-  .msg-avatar.ai { background:linear-gradient(135deg,#4c1d95,#7c3aed); border:1px solid rgba(167,139,250,.3); color:var(--purple-light); }
-  .msg-avatar.user { background:rgba(255,255,255,.04); border:1px solid var(--border); color:var(--muted); }
-  .msg-name { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin-bottom:4px; }
-  .msg-text { font-size:13px; line-height:1.65; color:#d4c8f0; }
-  .msg-tracks { margin-top:10px; display:flex; flex-direction:column; gap:4px; }
-  .mini-track { display:flex; align-items:center; gap:9px; background:var(--card); border:1px solid var(--border); border-radius:8px; padding:7px 10px; cursor:pointer; transition:all .12s; }
-  .mini-track:hover { border-color:rgba(147,51,234,.5); background:var(--purple-dim); }
-  .mini-track-num { color:var(--muted); font-size:11px; width:14px; flex-shrink:0; }
-  .mini-track-info { flex:1; min-width:0; }
-  .mini-track-title { font-size:12px; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .mini-track-artist { font-size:11px; color:var(--muted); margin-top:1px; }
-  .mini-track-add { color:var(--purple-light); font-size:16px; opacity:.5; flex-shrink:0; transition:opacity .1s; }
-  .mini-track:hover .mini-track-add { opacity:1; }
-  .add-all-btn { margin-top:6px; width:100%; padding:8px; background:var(--purple-dim); border:1px solid rgba(147,51,234,.4); color:var(--purple-light); border-radius:8px; font-size:12px; font-weight:500; cursor:pointer; font-family:var(--font); transition:all .12s; }
-  .add-all-btn:hover { background:rgba(147,51,234,.22); }
+  /* CARDS */
+  .card { background: #111; border-radius: 16px; overflow: hidden; }
+  .card-header { padding: 18px 20px 14px; font-size: 13px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; }
+  .card-body { padding: 0 20px 20px; }
+  .card-empty { text-align: center; padding: 40px 20px 48px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .card-empty-icon { font-size: 42px; }
+  .card-empty-text { color: #555; font-size: 14px; }
 
-  .suggestions-row { display:flex; gap:6px; flex-wrap:wrap; padding:8px 18px; border-top:1px solid var(--border); }
-  .chip { padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:11px; cursor:pointer; transition:all .12s; white-space:nowrap; font-family:var(--font); }
-  .chip:hover { border-color:rgba(147,51,234,.5); color:var(--purple-light); background:var(--purple-dim); }
+  /* AI MESSAGES */
+  .ai-msg-text { font-size: 14px; color: #bbb; line-height: 1.6; padding: 0 0 14px; }
+  .mini-tracks { display: flex; flex-direction: column; gap: 6px; }
+  .mini-track { display: flex; align-items: center; gap: 10px; background: #1a1a1a; border-radius: 10px; padding: 10px 12px; cursor: pointer; transition: background .12s; }
+  .mini-track:hover { background: #222; }
+  .mini-track-num { color: #555; font-size: 12px; width: 16px; flex-shrink: 0; }
+  .mini-track-info { flex: 1; min-width: 0; }
+  .mini-track-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-track-artist { font-size: 12px; color: #666; margin-top: 2px; }
+  .mini-track-add { color: #7c3aed; font-size: 18px; flex-shrink: 0; }
+  .add-all-btn { width: 100%; margin-top: 10px; padding: 10px; background: #7c3aed; border: none; border-radius: 10px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; transition: background .15s; }
+  .add-all-btn:hover { background: #6d28d9; }
+  .loading-dots { display: inline-flex; gap: 5px; align-items: center; padding: 16px 0 24px; }
+  .loading-dots span { width: 6px; height: 6px; background: #7c3aed; border-radius: 50%; animation: bounce 1.1s ease-in-out infinite; }
+  .loading-dots span:nth-child(2) { animation-delay: .18s; } .loading-dots span:nth-child(3) { animation-delay: .36s; }
+  @keyframes bounce { 0%,80%,100%{transform:scale(.4);opacity:.3} 40%{transform:scale(1);opacity:1} }
 
-  .input-wrap { padding:11px 18px; border-top:1px solid var(--border); display:flex; gap:8px; align-items:flex-end; }
-  .chat-input { flex:1; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:9px 13px; font-size:13px; color:var(--text); font-family:var(--font); resize:none; outline:none; line-height:1.5; transition:border-color .15s; max-height:80px; min-height:38px; }
-  .chat-input:focus { border-color:rgba(147,51,234,.6); box-shadow:0 0 0 2px rgba(147,51,234,.08); }
-  .chat-input::placeholder { color:var(--muted); }
-  .send-btn { width:38px; height:38px; background:var(--purple); border:none; border-radius:10px; color:white; font-size:14px; cursor:pointer; transition:all .15s; flex-shrink:0; display:flex; align-items:center; justify-content:center; }
-  .send-btn:hover { background:var(--purple-mid); box-shadow:0 0 14px rgba(147,51,234,.5); }
-  .send-btn:disabled { opacity:.3; cursor:not-allowed; }
-  .loading-dots { display:inline-flex; gap:4px; align-items:center; padding:5px 0; }
-  .loading-dots span { width:5px; height:5px; background:var(--purple-mid); border-radius:50%; animation:bounce 1.1s ease-in-out infinite; }
-  .loading-dots span:nth-child(2){animation-delay:.18s} .loading-dots span:nth-child(3){animation-delay:.36s}
-  @keyframes bounce { 0%,80%,100%{transform:scale(.4);opacity:.25} 40%{transform:scale(1);opacity:1} }
-
-  /* PLAYLIST */
-  .pl-name { font-size:22px; font-weight:700; letter-spacing:-.5px; background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text); outline:none; width:100%; padding-bottom:5px; transition:border-color .2s; }
-  .pl-name:focus { border-color:rgba(147,51,234,.5); }
-  .pl-meta { font-size:12px; color:var(--muted); margin-top:5px; }
-  .actions { display:flex; gap:8px; }
-  .btn { padding:7px 15px; border-radius:8px; font-size:12px; font-weight:500; cursor:pointer; font-family:var(--font); transition:all .15s; }
-  .btn-primary { background:var(--purple); border:1px solid var(--purple); color:white; }
-  .btn-primary:hover { background:var(--purple-mid); box-shadow:0 0 14px rgba(147,51,234,.4); }
-  .btn-ghost { background:transparent; border:1px solid var(--border); color:var(--muted); }
-  .btn-ghost:hover { border-color:rgba(147,51,234,.5); color:var(--purple-light); }
-
-  .track-list { display:flex; flex-direction:column; gap:3px; }
-  .empty { text-align:center; padding:60px 20px; border:1px dashed var(--border); border-radius:14px; color:var(--muted); }
-  .empty-icon { font-size:38px; margin-bottom:12px; opacity:.25; }
-  .empty-title { font-size:15px; font-weight:600; color:var(--text); margin-bottom:6px; opacity:.3; }
-  .empty-sub { font-size:13px; line-height:1.7; }
-
-  .track-row { display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--card); border:1px solid var(--border); border-radius:10px; transition:all .15s; animation:fadeUp .2s ease; }
-  .track-row:hover { border-color:rgba(147,51,234,.35); background:rgba(147,51,234,.04); }
-  .track-row.playing { border-color:var(--purple); background:rgba(147,51,234,.1); box-shadow:0 0 0 1px rgba(147,51,234,.2); }
-  .track-num { width:20px; text-align:center; font-size:12px; color:var(--muted); flex-shrink:0; }
-  .track-thumb { width:50px; height:36px; border-radius:6px; overflow:hidden; flex-shrink:0; background:rgba(147,51,234,.1); display:flex; align-items:center; justify-content:center; font-size:14px; cursor:pointer; position:relative; transition:transform .1s; border:1px solid var(--border); }
-  .track-thumb:hover { transform:scale(1.06); }
-  .track-thumb img { width:100%; height:100%; object-fit:cover; }
-  .thumb-overlay { position:absolute; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity .12s; }
-  .track-thumb:hover .thumb-overlay, .track-row.playing .thumb-overlay { opacity:1; }
-  .yt-icon { width:18px; height:18px; background:#ff0000; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:8px; color:white; }
-  .track-info { flex:1; min-width:0; }
-  .track-title { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text); }
-  .track-artist { font-size:11.5px; color:var(--muted); margin-top:2px; }
-  .track-status { font-size:9px; text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
-  .track-status.found { color:var(--purple-mid); }
-  .track-status.searching { color:var(--muted); }
-  .track-status.notfound { color:var(--muted); opacity:.4; }
-  .track-genre { font-size:10px; background:rgba(147,51,234,.12); border:1px solid rgba(147,51,234,.2); color:var(--purple-light); padding:2px 8px; border-radius:20px; white-space:nowrap; flex-shrink:0; opacity:.8; }
-  .track-dur { font-size:12px; color:var(--muted); flex-shrink:0; }
-  .track-del { width:26px; height:26px; border-radius:6px; border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:12px; flex-shrink:0; opacity:0; transition:all .1s; display:flex; align-items:center; justify-content:center; }
-  .track-row:hover .track-del { opacity:1; }
-  .track-del:hover { background:rgba(147,51,234,.15); color:var(--purple-light); }
-  .bars { display:inline-flex; gap:2px; align-items:flex-end; height:13px; }
-  .bars span { width:3px; background:var(--purple-light); border-radius:1px; animation:bar .65s ease-in-out infinite alternate; }
-  .bars span:nth-child(1){height:5px} .bars span:nth-child(2){height:10px;animation-delay:.15s} .bars span:nth-child(3){height:13px;animation-delay:.3s}
+  /* PLAYLIST TRACKS */
+  .pl-tracks { display: flex; flex-direction: column; gap: 4px; }
+  .track-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #1a1a1a; border-radius: 10px; transition: background .12s; }
+  .track-row:hover { background: #222; }
+  .track-row.playing { background: rgba(124,58,237,.15); }
+  .track-num { width: 18px; text-align: center; font-size: 12px; color: #555; flex-shrink: 0; }
+  .track-thumb { width: 44px; height: 34px; border-radius: 6px; overflow: hidden; flex-shrink: 0; background: #2a2a2a; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; position: relative; }
+  .track-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .thumb-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .12s; border-radius: 6px; }
+  .track-thumb:hover .thumb-overlay, .track-row.playing .thumb-overlay { opacity: 1; }
+  .yt-icon { font-size: 12px; }
+  .track-info { flex: 1; min-width: 0; }
+  .track-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track-artist { font-size: 11px; color: #666; margin-top: 2px; }
+  .track-dur { font-size: 12px; color: #555; flex-shrink: 0; }
+  .track-del { background: transparent; border: none; color: #444; cursor: pointer; font-size: 14px; flex-shrink: 0; opacity: 0; transition: all .1s; padding: 2px 4px; }
+  .track-row:hover .track-del { opacity: 1; }
+  .track-del:hover { color: #a855f7; }
+  .bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 12px; }
+  .bars span { width: 3px; background: #a855f7; border-radius: 1px; animation: bar .65s ease-in-out infinite alternate; }
+  .bars span:nth-child(1){height:4px} .bars span:nth-child(2){height:9px;animation-delay:.15s} .bars span:nth-child(3){height:12px;animation-delay:.3s}
   @keyframes bar { from{transform:scaleY(.3)} to{transform:scaleY(1)} }
 
+  /* SEARCH MODAL */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; display: flex; align-items: flex-end; justify-content: center; }
+  .modal-bg.hidden { display: none; }
+  .modal { background: #111; border-radius: 20px 20px 0 0; width: 100%; max-width: 480px; padding: 20px; max-height: 70vh; overflow-y: auto; }
+  .modal-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 14px; }
+  .modal-input { width: 100%; background: #1a1a1a; border: none; border-radius: 10px; padding: 12px 14px; font-size: 14px; color: #fff; font-family: 'Inter', sans-serif; outline: none; margin-bottom: 12px; }
+  .modal-input::placeholder { color: #555; }
+  .modal-result { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #1a1a1a; border-radius: 10px; cursor: pointer; margin-bottom: 6px; }
+  .modal-result:hover { background: #222; }
+  .modal-close { width: 100%; padding: 12px; background: #1a1a1a; border: none; border-radius: 10px; color: #888; font-family: 'Inter', sans-serif; font-size: 14px; cursor: pointer; margin-top: 8px; }
+
   /* PLAYER */
-  .player { background:var(--surface); border-top:1px solid var(--border); display:flex; align-items:stretch; overflow:hidden; transition:max-height .3s ease; }
-  .player.hidden { max-height:0; border-top:none; }
-  .player.visible { max-height:180px; }
-  .yt-wrap { width:200px; flex-shrink:0; background:#000; }
-  .yt-wrap > div { width:100%; height:100%; }
-  .player-info { flex:1; padding:16px 22px; display:flex; align-items:center; gap:22px; }
-  .player-text { flex:1; min-width:0; }
-  .player-title { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .player-artist { font-size:12px; color:var(--muted); margin-top:2px; }
-  .player-badge { font-size:9px; color:var(--purple-mid); letter-spacing:1.5px; text-transform:uppercase; margin-top:5px; }
-  .controls { display:flex; align-items:center; gap:10px; flex-shrink:0; }
-  .ctrl { width:34px; height:34px; border-radius:50%; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; transition:all .12s; }
-  .ctrl:hover { border-color:rgba(147,51,234,.5); color:var(--purple-light); }
-  .ctrl:disabled { opacity:.2; cursor:not-allowed; }
-  .play { width:42px; height:42px; border-radius:50%; border:none; background:var(--purple); color:white; cursor:pointer; font-size:15px; transition:all .15s; display:flex; align-items:center; justify-content:center; box-shadow:0 0 20px rgba(147,51,234,.4); }
-  .play:hover { background:var(--purple-mid); transform:scale(1.06); box-shadow:0 0 28px rgba(147,51,234,.6); }
+  .player { position: fixed; bottom: 0; left: 0; right: 0; background: #111; border-top: 1px solid #1e1e1e; padding: 12px 20px; display: flex; align-items: center; gap: 14px; max-width: 480px; margin: 0 auto; transition: transform .3s ease; }
+  .player.hidden { transform: translateY(100%); }
+  .player-thumb { width: 44px; height: 34px; border-radius: 6px; overflow: hidden; background: #222; flex-shrink: 0; }
+  .player-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .player-info { flex: 1; min-width: 0; }
+  .player-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .player-artist { font-size: 11px; color: #666; }
+  .player-controls { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .ctrl { background: transparent; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 4px; transition: color .12s; }
+  .ctrl:hover { color: #fff; }
+  .ctrl:disabled { opacity: .25; cursor: not-allowed; }
+  .play-btn { width: 38px; height: 38px; border-radius: 50%; background: #7c3aed; border: none; color: #fff; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: background .15s; }
+  .play-btn:hover { background: #6d28d9; }
+  .yt-hidden { position: fixed; bottom: -200px; left: -200px; width: 1px; height: 1px; overflow: hidden; }
+
+  /* PLAYLIST ACTIONS */
+  .pl-actions { display: flex; gap: 8px; margin-bottom: 14px; }
+  .pl-name-input { flex: 1; background: transparent; border: none; border-bottom: 1.5px solid #222; color: #fff; font-size: 16px; font-weight: 600; font-family: 'Inter', sans-serif; outline: none; padding-bottom: 4px; }
+  .pl-name-input:focus { border-color: #7c3aed; }
+  .action-btn { background: #1a1a1a; border: none; border-radius: 8px; padding: 7px 14px; color: #aaa; font-size: 12px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all .12s; }
+  .action-btn:hover { color: #fff; background: #222; }
 `;
 
 const EMOJIS = ["🎵","🎸","🎹","🎷","🎺","🥁","🎻","🎤","🎧","🎼"];
-const PROMPTS = ["Late night lo-fi 📚","Road trip bangers 🚗","90s hip-hop 🎤","Dark ambient 🌑","Indie pop ☀️","Workout mix 💪"];
 
 function totalDur(tracks) {
-  const s = tracks.reduce((a,t)=>{ const [m,s]=(t.duration||"0:00").split(":").map(Number); return a+m*60+(s||0); },0);
+  const s = tracks.reduce((a,t)=>{ const [m,sec]=(t.duration||"0:00").split(":").map(Number); return a+m*60+(sec||0); },0);
   const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
   return h>0?`${h}h ${m}m`:`${m}m ${sec.toString().padStart(2,"0")}s`;
 }
@@ -181,17 +139,19 @@ function onYT(cb) { if(ytReady) cb(); else ytCbs.push(cb); }
 export default function App() {
   const [playlist, setPlaylist] = useState([]);
   const [name, setName] = useState("My Playlist");
-  const [aiOpen, setAiOpen] = useState(false);
-  const [msgs, setMsgs] = useState([{ role:"ai", text:"Hi! Tell me a vibe, mood, or genre and I'll build your playlist. Click any track to play on YouTube 🎬", tracks:null }]);
-  const [input, setInput] = useState("");
+  const [aiTracks, setAiTracks] = useState(null);
+  const [aiText, setAiText] = useState("");
+  const [vibe, setVibe] = useState("");
   const [loading, setLoading] = useState(false);
   const [nowPlaying, setNowPlaying] = useState(null);
   const [playing, setPlaying] = useState(false);
-  const chatEnd = useRef(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const playerRef = useRef(null);
   const playerDiv = useRef(null);
 
-  useEffect(()=>{ if(aiOpen) chatEnd.current?.scrollIntoView({behavior:"smooth"}); },[msgs,loading,aiOpen]);
   useEffect(()=>{ loadYT(); },[]);
 
   const initPlayer = useCallback((videoId)=>{
@@ -203,9 +163,8 @@ export default function App() {
         events:{ onStateChange:(e)=>{
           const S=window.YT.PlayerState;
           if(e.data===S.PLAYING) setPlaying(true);
-          if(e.data===S.PAUSED) setPlaying(false);
+          if(e.data===S.PAUSED||e.data===S.ENDED) setPlaying(false);
           if(e.data===S.ENDED){
-            setPlaying(false);
             setNowPlaying(prev=>{
               if(!prev) return prev;
               setPlaylist(pl=>{
@@ -223,7 +182,7 @@ export default function App() {
   },[]);
 
   const playTrack = useCallback((t)=>{ if(!t.videoId) return; setNowPlaying(t); initPlayer(t.videoId); },[initPlayer]);
-  const togglePlay = ()=>{ if(!playerRef.current) return; if(playing){playerRef.current.pauseVideo();setPlaying(false);}else{playerRef.current.playVideo();setPlaying(true);} };
+  const togglePlay = ()=>{ if(!playerRef.current) return; if(playing){playerRef.current.pauseVideo();}else{playerRef.current.playVideo();} };
   const skip = (d)=>{ if(!nowPlaying) return; const i=playlist.findIndex(t=>t.id===nowPlaying.id); const n=playlist[i+d]; if(n) playTrack(n); };
 
   const addTrack = useCallback(async(track)=>{
@@ -237,9 +196,9 @@ export default function App() {
   const addAll=(tracks)=>tracks.forEach(t=>addTrack(t));
   const remove=(id)=>{ if(nowPlaying?.id===id){setNowPlaying(null);playerRef.current?.stopVideo();setPlaying(false);} setPlaylist(p=>p.filter(t=>t.id!==id)); };
 
-  const send=async(text)=>{
-    const t=text||input.trim(); if(!t||loading) return;
-    setInput(""); setMsgs(p=>[...p,{role:"user",text:t}]); setLoading(true);
+  const generate=async()=>{
+    const t=vibe.trim(); if(!t||loading) return;
+    setLoading(true); setAiTracks(null); setAiText("");
     try {
       const res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
         system:`You are a music playlist curator. Respond with a 1-2 sentence intro, then exactly 8 songs as JSON:\n\`\`\`json\n[{"title":"Song Title","artist":"Artist Name","genre":"Genre","duration":"3:42"}]\n\`\`\`\nShort genres, realistic durations. End with one sentence about the selection.`,
@@ -251,13 +210,37 @@ export default function App() {
       const match=full.match(/```json\s*([\s\S]*?)```/);
       let tracks=null,display=full;
       if(match){try{tracks=JSON.parse(match[1].trim());display=full.replace(/```json[\s\S]*?```/,"").trim();}catch{}}
-      setMsgs(p=>[...p,{role:"ai",text:display,tracks}]);
-    } catch(e){ setMsgs(p=>[...p,{role:"ai",text:`Error: ${e.message}`,tracks:null}]); }
+      setAiText(display); setAiTracks(tracks);
+    } catch(e){ setAiText(`Error: ${e.message}`); }
     setLoading(false);
   };
 
+  const doSearch=async(q)=>{
+    if(!q.trim()) return;
+    setSearching(true); setSearchResults([]);
+    try {
+      const r=await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`);
+      const d=await r.json();
+      setSearchResults(d?.items||[]);
+    } catch {}
+    setSearching(false);
+  };
+
+  const addFromSearch=(item)=>{
+    const track={
+      title: item.snippet?.title||"Unknown",
+      artist: item.snippet?.channelTitle||"",
+      duration: "?",
+      videoId: item.id?.videoId,
+      thumbnail: item.snippet?.thumbnails?.medium?.url
+    };
+    const id=Date.now()+Math.random();
+    setPlaylist(p=>[...p,{...track,id,ytStatus:"found"}]);
+    setSearchOpen(false); setSearchQ(""); setSearchResults([]);
+  };
+
   const exportPl=()=>{
-    const text=`${name}\n${"─".repeat(30)}\n\n`+playlist.map((t,i)=>`${i+1}. ${t.title} — ${t.artist} [${t.duration}]${t.videoId?`\n   https://youtube.com/watch?v=${t.videoId}`:""}`).join("\n\n");
+    const text=`${name}\n${"─".repeat(30)}\n\n`+playlist.map((t,i)=>`${i+1}. ${t.title} — ${t.artist}${t.videoId?`\n   https://youtube.com/watch?v=${t.videoId}`:""}`).join("\n\n");
     const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([text],{type:"text/plain"})); a.download=`${name.replace(/\s+/g,"_").toLowerCase()}.txt`; a.click();
   };
 
@@ -266,129 +249,140 @@ export default function App() {
       <style>{STYLES}</style>
       <div className="app">
 
-        <div className="header">
-          <div className="logo">Playlist<span>.ai</span></div>
-          <div className="yt-badge">▶ YouTube</div>
-          <div className="header-right">
-            <div className="track-count-label">
-              <strong>{playlist.length}</strong> tracks{playlist.length>0&&<> · <strong>{totalDur(playlist)}</strong></>}
-            </div>
-            <button className={`ai-toggle-btn${aiOpen?" active":""}`} onClick={()=>setAiOpen(o=>!o)}>
-              <span className="ai-dot"/>
-              {aiOpen?"Close AI":"✦ Ask AI"}
-            </button>
-          </div>
+        {/* HERO */}
+        <div className="hero">
+          <div className="hero-title"><span className="hero-note">♫</span> Playlist AI</div>
+          <div className="hero-sub">Describe your vibe — AI curates the songs, you own the playlist</div>
         </div>
 
-        <div className={`backdrop${aiOpen?"":" hidden"}`} onClick={()=>setAiOpen(false)}/>
+        {/* INPUT ROW */}
+        <div className="input-row">
+          <input
+            className="vibe-input"
+            placeholder="e.g. chill lo-fi beats for late night..."
+            value={vibe}
+            onChange={e=>setVibe(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter") generate(); }}
+          />
+          <button className="gen-btn" onClick={generate} disabled={loading||!vibe.trim()}>✦ Generate</button>
+        </div>
 
-        <div className={`ai-drawer ${aiOpen?"open":"closed"}`}>
-          <div className="drawer-header">
-            <span className="drawer-title">AI Curator</span>
-            <button className="drawer-close" onClick={()=>setAiOpen(false)}>✕</button>
-          </div>
-          <div className="chat-area">
-            {msgs.map((m,i)=>(
-              <div key={i} className="msg">
-                <div className={`msg-avatar ${m.role}`}>{m.role==="ai"?"AI":"↑"}</div>
-                <div>
-                  <div className="msg-name">{m.role==="ai"?"Playlist AI":"You"}</div>
-                  <div className="msg-text">{m.text}</div>
-                  {m.tracks?.length>0&&(
-                    <div className="msg-tracks">
-                      {m.tracks.map((t,ti)=>(
-                        <div key={ti} className="mini-track" onClick={()=>addTrack(t)}>
-                          <div className="mini-track-num">{ti+1}</div>
-                          <div className="mini-track-info">
-                            <div className="mini-track-title">{t.title}</div>
-                            <div className="mini-track-artist">{t.artist} · {t.duration}</div>
-                          </div>
-                          <div className="mini-track-add">+</div>
-                        </div>
-                      ))}
-                      <button className="add-all-btn" onClick={()=>addAll(m.tracks)}>+ Add all {m.tracks.length} tracks</button>
+        {/* SEARCH PILL */}
+        <button className="search-pill" onClick={()=>setSearchOpen(true)}>🔍 Search any song</button>
+
+        {/* AI SUGGESTIONS CARD */}
+        <div className="card">
+          <div className="card-header">AI Suggestions</div>
+          {loading ? (
+            <div className="card-body"><div className="loading-dots"><span/><span/><span/></div></div>
+          ) : aiTracks?.length > 0 ? (
+            <div className="card-body">
+              {aiText ? <div className="ai-msg-text">{aiText}</div> : null}
+              <div className="mini-tracks">
+                {aiTracks.map((t,i)=>(
+                  <div key={i} className="mini-track" onClick={()=>addTrack(t)}>
+                    <div className="mini-track-num">{i+1}</div>
+                    <div className="mini-track-info">
+                      <div className="mini-track-title">{t.title}</div>
+                      <div className="mini-track-artist">{t.artist} · {t.duration}</div>
                     </div>
-                  )}
-                </div>
+                    <div className="mini-track-add">+</div>
+                  </div>
+                ))}
               </div>
-            ))}
-            {loading&&<div className="msg"><div className="msg-avatar ai">AI</div><div><div className="msg-name">Playlist AI</div><div className="loading-dots"><span/><span/><span/></div></div></div>}
-            <div ref={chatEnd}/>
-          </div>
-          <div className="suggestions-row">
-            {PROMPTS.map((p,i)=><button key={i} className="chip" onClick={()=>send(p)}>{p}</button>)}
-          </div>
-          <div className="input-wrap">
-            <textarea className="chat-input" placeholder="Describe a mood or genre..." value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} rows={1}/>
-            <button className="send-btn" onClick={()=>send()} disabled={loading||!input.trim()}>↑</button>
-          </div>
-        </div>
-
-        <div className="main">
-          <div>
-            <input className="pl-name" value={name} onChange={e=>setName(e.target.value)} maxLength={40} placeholder="Playlist name..."/>
-            <div className="pl-meta">{playlist.length>0?`${playlist.length} tracks · ${totalDur(playlist)} · Click artwork to play`:'Tap "✦ Ask AI" to get started'}</div>
-          </div>
-
-          {playlist.length>0&&(
-            <div className="actions">
-              <button className="btn btn-primary" onClick={exportPl}>↓ Export</button>
-              <button className="btn btn-ghost" onClick={()=>{setPlaylist([]);setNowPlaying(null);playerRef.current?.stopVideo();setPlaying(false);}}>Clear</button>
+              <button className="add-all-btn" onClick={()=>addAll(aiTracks)}>+ Add all {aiTracks.length} tracks to playlist</button>
             </div>
-          )}
-
-          <div className="track-list">
-            {playlist.length===0?(
-              <div className="empty">
-                <div className="empty-icon">🎬</div>
-                <div className="empty-title">No tracks yet</div>
-                <div className="empty-sub">Tap "✦ Ask AI" to describe your vibe<br/>and build your playlist.</div>
-              </div>
-            ):playlist.map((track,i)=>{
-              const isPlaying=nowPlaying?.id===track.id;
-              return (
-                <div key={track.id} className={`track-row${isPlaying?" playing":""}`}>
-                  <div className="track-num">{isPlaying&&playing?<span className="bars"><span/><span/><span/></span>:i+1}</div>
-                  <div className="track-thumb" onClick={()=>track.videoId&&playTrack(track)}>
-                    {track.thumbnail?<img src={track.thumbnail} alt=""/>:<span>{EMOJIS[i%EMOJIS.length]}</span>}
-                    <div className="thumb-overlay"><div className="yt-icon">{isPlaying&&playing?"⏸":"▶"}</div></div>
-                  </div>
-                  <div className="track-info">
-                    <div className="track-title">{track.title}</div>
-                    <div className="track-artist">{track.artist}</div>
-                    <div className={`track-status ${track.ytStatus}`}>
-                      {track.ytStatus==="found"&&"● ready"}
-                      {track.ytStatus==="searching"&&"○ searching..."}
-                      {track.ytStatus==="notfound"&&"○ not found"}
-                    </div>
-                  </div>
-                  {track.genre&&<div className="track-genre">{track.genre}</div>}
-                  <div className="track-dur">{track.duration}</div>
-                  <button className="track-del" onClick={()=>remove(track.id)}>✕</button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className={`player ${nowPlaying?"visible":"hidden"}`}>
-          <div className="yt-wrap"><div ref={playerDiv}/></div>
-          {nowPlaying&&(
-            <div className="player-info">
-              <div className="player-text">
-                <div className="player-title">{nowPlaying.title}</div>
-                <div className="player-artist">{nowPlaying.artist}</div>
-                <div className="player-badge">▶ Playing on YouTube</div>
-              </div>
-              <div className="controls">
-                <button className="ctrl" onClick={()=>skip(-1)} disabled={!playlist.length}>⏮</button>
-                <button className="play" onClick={togglePlay}>{playing?"⏸":"▶"}</button>
-                <button className="ctrl" onClick={()=>skip(1)} disabled={!playlist.length}>⏭</button>
-              </div>
+          ) : (
+            <div className="card-empty">
+              <div className="card-empty-icon">🎧</div>
+              <div className="card-empty-text">Generate a playlist to see suggestions here</div>
             </div>
           )}
         </div>
 
+        {/* MY PLAYLIST CARD */}
+        <div className="card">
+          <div className="card-header">My Playlist</div>
+          {playlist.length > 0 ? (
+            <div className="card-body">
+              <div className="pl-actions">
+                <input className="pl-name-input" value={name} onChange={e=>setName(e.target.value)} maxLength={40}/>
+                <button className="action-btn" onClick={exportPl}>↓ Export</button>
+                <button className="action-btn" onClick={()=>{setPlaylist([]);setNowPlaying(null);playerRef.current?.stopVideo();setPlaying(false);}}>Clear</button>
+              </div>
+              <div className="pl-tracks">
+                {playlist.map((track,i)=>{
+                  const isPlaying=nowPlaying?.id===track.id;
+                  return (
+                    <div key={track.id} className={`track-row${isPlaying?" playing":""}`}>
+                      <div className="track-num">{isPlaying&&playing?<span className="bars"><span/><span/><span/></span>:i+1}</div>
+                      <div className="track-thumb" onClick={()=>track.videoId&&playTrack(track)}>
+                        {track.thumbnail?<img src={track.thumbnail} alt=""/>:<span>{EMOJIS[i%EMOJIS.length]}</span>}
+                        <div className="thumb-overlay"><span className="yt-icon">{isPlaying&&playing?"⏸":"▶"}</span></div>
+                      </div>
+                      <div className="track-info">
+                        <div className="track-title">{track.title}</div>
+                        <div className="track-artist">{track.artist}</div>
+                      </div>
+                      <div className="track-dur">{track.duration}</div>
+                      <button className="track-del" onClick={()=>remove(track.id)}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="card-empty">
+              <div className="card-empty-icon">📋</div>
+              <div className="card-empty-text">Add songs from suggestions or search above</div>
+            </div>
+          )}
+        </div>
+
+      </div>
+
+      {/* SEARCH MODAL */}
+      <div className={`modal-bg${searchOpen?"":" hidden"}`} onClick={e=>{ if(e.target===e.currentTarget){setSearchOpen(false);setSearchQ("");setSearchResults([]);} }}>
+        <div className="modal">
+          <div className="modal-title">Search any song</div>
+          <input
+            className="modal-input"
+            placeholder="Artist, song title..."
+            value={searchQ}
+            onChange={e=>setSearchQ(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter") doSearch(searchQ); }}
+            autoFocus
+          />
+          {searching && <div className="loading-dots" style={{paddingBottom:"14px"}}><span/><span/><span/></div>}
+          {searchResults.map((item,i)=>(
+            <div key={i} className="modal-result" onClick={()=>addFromSearch(item)}>
+              {item.snippet?.thumbnails?.default?.url && <img src={item.snippet.thumbnails.default.url} alt="" style={{width:48,height:36,borderRadius:6,objectFit:"cover",flexShrink:0}}/>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.snippet?.title}</div>
+                <div style={{fontSize:11,color:"#666",marginTop:2}}>{item.snippet?.channelTitle}</div>
+              </div>
+              <span style={{color:"#7c3aed",fontSize:18}}>+</span>
+            </div>
+          ))}
+          <button className="modal-close" onClick={()=>{setSearchOpen(false);setSearchQ("");setSearchResults([]);}}>Close</button>
+        </div>
+      </div>
+
+      {/* HIDDEN YT PLAYER */}
+      <div className="yt-hidden"><div ref={playerDiv}/></div>
+
+      {/* PLAYER BAR */}
+      <div className={`player${nowPlaying?"":" hidden"}`}>
+        {nowPlaying?.thumbnail && <div className="player-thumb"><img src={nowPlaying.thumbnail} alt=""/></div>}
+        <div className="player-info">
+          <div className="player-title">{nowPlaying?.title}</div>
+          <div className="player-artist">{nowPlaying?.artist}</div>
+        </div>
+        <div className="player-controls">
+          <button className="ctrl" onClick={()=>skip(-1)}>⏮</button>
+          <button className="play-btn" onClick={togglePlay}>{playing?"⏸":"▶"}</button>
+          <button className="ctrl" onClick={()=>skip(1)}>⏭</button>
+        </div>
       </div>
     </>
   );
