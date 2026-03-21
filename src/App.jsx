@@ -53,7 +53,8 @@ const STYLES = `
   .app { display:grid; grid-template-rows:auto auto 1fr auto; height:100vh; max-width:840px; margin:0 auto; }
   ::-webkit-scrollbar { width:3px; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
 
-  #yt-player { position:fixed; bottom:-5px; right:-5px; width:2px; height:2px; opacity:0; pointer-events:none; z-index:-1; }
+  #yt-player-wrap { position:fixed; top:-9999px; left:-9999px; width:320px; height:180px; pointer-events:none; z-index:-1; }
+  #yt-player { width:100%; height:100%; }
 
   /* HEADER */
   .header { padding:22px 24px 14px; }
@@ -282,15 +283,20 @@ export default function App() {
 
   // Load YouTube IFrame API
   useEffect(() => {
-    if (window.YT) { ytReadyRef.current = true; return; }
+    if (window.YT && window.YT.Player) { ytReadyRef.current = true; return; }
     const tag = document.createElement("script");
     tag.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(tag);
     window.onYouTubeIframeAPIReady = () => {
       ytReadyRef.current = true;
       ytPlayerRef.current = new window.YT.Player("yt-player", {
-        height: "1", width: "1",
+        height: "180", width: "320",
+        playerVars: { autoplay: 1, controls: 0, playsinline: 1, mute: 0 },
         events: {
+          onReady: (e) => {
+            e.target.setVolume(100);
+            e.target.unMute();
+          },
           onStateChange: (e) => {
             if (e.data === window.YT.PlayerState.PLAYING) setPlaying(true);
             if (e.data === window.YT.PlayerState.PAUSED) setPlaying(false);
@@ -329,12 +335,17 @@ export default function App() {
     // YouTube
     if (t.videoId) {
       if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      const doPlay = (player) => {
+        player.unMute();
+        player.setVolume(100);
+        player.loadVideoById(t.videoId);
+      };
       if (ytPlayerRef.current?.loadVideoById) {
-        ytPlayerRef.current.loadVideoById(t.videoId);
+        doPlay(ytPlayerRef.current);
       } else {
         const check = setInterval(() => {
           if (ytPlayerRef.current?.loadVideoById) {
-            ytPlayerRef.current.loadVideoById(t.videoId);
+            doPlay(ytPlayerRef.current);
             clearInterval(check);
           }
         }, 200);
@@ -569,7 +580,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
   return (
     <>
       <style>{STYLES}</style>
-      <div id="yt-player" />
+      <div id="yt-player-wrap"><div id="yt-player" /></div>
 
       <div className="app">
         {/* HEADER */}
