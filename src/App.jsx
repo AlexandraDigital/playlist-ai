@@ -6,9 +6,12 @@ const IDB = {
   open() {
     if (this._db) return Promise.resolve(this._db);
     return new Promise((res, rej) => {
-      const r = indexedDB.open("playlist-ai", 1);
-      r.onupgradeneeded = (e) =>
-        e.target.result.createObjectStore("offline", { keyPath: "videoId" });
+      const r = indexedDB.open("playlist-ai", 2);
+      r.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains("offline"))
+          db.createObjectStore("offline", { keyPath: "videoId" });
+      };
       r.onsuccess = (e) => { this._db = e.target.result; res(this._db); };
       r.onerror = (e) => rej(e.target.error);
     });
@@ -17,7 +20,9 @@ const IDB = {
     const db = await this.open();
     return new Promise((res, rej) => {
       const tx = db.transaction("offline", "readwrite");
-      tx.objectStore("offline").put(rec);
+      // Don't store the blobUrl (session-only), store the blob itself
+      const { blobUrl, ...toStore } = rec;
+      tx.objectStore("offline").put(toStore);
       tx.oncomplete = res; tx.onerror = rej;
     });
   },
@@ -25,7 +30,18 @@ const IDB = {
     const db = await this.open();
     return new Promise((res, rej) => {
       const req = db.transaction("offline", "readonly").objectStore("offline").getAll();
-      req.onsuccess = () => res(req.result || []);
+      req.onsuccess = () => {
+        const records = req.result || [];
+        // Recreate blob URLs from stored audio blobs
+        const results = records.map((rec) => {
+          if (rec.audioBlob) {
+            const url = URL.createObjectURL(rec.audioBlob);
+            return { ...rec, blobUrl: url };
+          }
+          return rec;
+        });
+        res(results);
+      };
       req.onerror = rej;
     });
   },
@@ -157,6 +173,26 @@ const STYLES = `
   .empty-text { font-size:14px; }
   .empty-sub { font-size:12px; color:var(--muted); opacity:.6; }
 
+  /* MY PLAYLISTS */
+  .pl-list { display:flex; flex-direction:column; gap:8px; padding-bottom:12px; }
+  .pl-card { background:var(--card); border:1px solid var(--border); border-radius:10px;
+    padding:13px 15px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:border-color .15s; }
+  .pl-card:hover { border-color:#2a2a2a; }
+  .pl-card-icon { width:40px; height:40px; border-radius:8px; background:var(--purple-dim);
+    display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+  .pl-card-info { flex:1; min-width:0; }
+  .pl-card-name { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pl-card-count { font-size:12px; color:var(--muted); margin-top:2px; }
+  .pl-card-actions { display:flex; gap:6px; }
+  .save-pl-btn { padding:8px 14px; background:var(--purple); border:none; border-radius:8px;
+    color:#fff; font-family:var(--font); font-size:12px; font-weight:500; cursor:pointer; transition:background .15s; white-space:nowrap; }
+  .save-pl-btn:hover { background:var(--purple2); }
+  .save-pl-btn:disabled { opacity:.4; cursor:not-allowed; }
+
+  /* UPLOAD */
+  .t-btn.upload { }
+  .t-btn.upload:hover { border-color:rgba(168,85,247,.4); color:var(--purple-light); }
+
   /* PLAYER BAR */
   .player { background:var(--surface); border-top:1px solid var(--border);
     padding:12px 24px; display:flex; align-items:center; gap:14px; }
@@ -266,6 +302,10 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [dlStatus, setDlStatus] = useState({});
   const [offlineTracks, setOfflineTracks] = useState([]);
+  const [savedPlaylists, setSavedPlaylists] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("saved-playlists") || "[]"); } catch { return []; }
+  });
+  const [newPlName, setNewPlName] = useState("");
 
   const ytPlayerRef = useRef(null);
   const ytReadyRef = useRef(false);
@@ -273,6 +313,8 @@ export default function App() {
   const blobUrlsRef = useRef({});
   const audioRef = useRef(null);
   const autoSaveTimerRef = useRef(null);
+  const uploadFileRef = useRef(null);
+  const uploadTargetRef = useRef(null);
 
   useEffect(() => { playlistRef.current = playlist; }, [playlist]);
 
@@ -397,7 +439,8 @@ export default function App() {
       setDlStatus((s) => ({ ...s, [track.videoId]: "done" }));
       const rec = {
         videoId: track.videoId, title: track.title, artist: track.artist,
-        thumbnail: track.thumbnail, duration: track.duration, blobUrl: url,
+        thumbnail: track.thumbnail, duration: track.duration,
+        audioBlob: blob, // store actual blob so it survives page reloads
       };
       await IDB.save(rec);
       setOfflineTracks(await IDB.getAll());
@@ -498,6 +541,77 @@ Include 6-10 songs. No explanations, just the JSON array.`;
     setTab("playlist");
   };
 
+  /* ── Upload audio file ──────────────────────────────────────── */
+  const handleUploadFile = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const target = uploadTargetRef.current;
+    if (!target) return;
+
+    const url = URL.createObjectURL(file);
+
+    if (target.isNew) {
+      // New offline track from Downloads tab upload
+      const title = file.name.replace(/\.[^/.]+$/, "");
+      const videoId = `upload_${Date.now()}`;
+      blobUrlsRef.current[videoId] = url;
+      const rec = { videoId, title, artist: "", thumbnail: null, duration: null, audioBlob: file };
+      await IDB.save(rec);
+      setOfflineTracks(await IDB.getAll());
+    } else {
+      // Attach audio to existing playlist track
+      const t = target.track;
+      const videoId = t.videoId || `upload_${Date.now()}`;
+      blobUrlsRef.current[videoId] = url;
+      setDlStatus((s) => ({ ...s, [videoId]: "done" }));
+      const rec = {
+        videoId, title: t.title, artist: t.artist,
+        thumbnail: t.thumbnail, duration: t.duration, audioBlob: file,
+      };
+      await IDB.save(rec);
+      setOfflineTracks(await IDB.getAll());
+      if (!t.videoId) setPlaylist((p) => p.map((x) => x.id === t.id ? { ...x, videoId } : x));
+    }
+  }, []);
+
+  /* ── Save / load playlists ──────────────────────────────────── */
+  const savePlaylist = useCallback(() => {
+    if (!playlist.length) return;
+    const name = plName.trim() || "Untitled";
+    const entry = {
+      id: Date.now(),
+      name,
+      songs: playlist.map(({ title, artist, videoId, thumbnail, duration, hasSpotify }) =>
+        ({ title, artist, videoId, thumbnail, duration, hasSpotify })),
+    };
+    const updated = [entry, ...savedPlaylists.filter((p) => p.name !== name)];
+    setSavedPlaylists(updated);
+    localStorage.setItem("saved-playlists", JSON.stringify(updated));
+  }, [playlist, plName, savedPlaylists]);
+
+  const loadPlaylist = useCallback((pl) => {
+    setPlaylist(pl.songs.map((s) => ({ ...s, id: Date.now() + Math.random(), ytStatus: s.videoId ? "found" : "notfound" })));
+    setPlName(pl.name);
+    setTab("playlist");
+    setCurrentIdx(null);
+  }, []);
+
+  const deletePlaylist = useCallback((id) => {
+    const updated = savedPlaylists.filter((p) => p.id !== id);
+    setSavedPlaylists(updated);
+    localStorage.setItem("saved-playlists", JSON.stringify(updated));
+  }, [savedPlaylists]);
+
+  const createNewPlaylist = useCallback(() => {
+    const name = newPlName.trim() || "New Playlist";
+    setPlaylist([]);
+    setPlName(name);
+    setNewPlName("");
+    setCurrentIdx(null);
+    setTab("playlist");
+  }, [newPlName]);
+
   /* ── Render track row ───────────────────────────────────────── */
   const renderRow = (t, idx, isOffline = false) => {
     const isPlaying = currentIdx === idx && playing && tab === (isOffline ? "offline" : "playlist");
@@ -560,6 +674,13 @@ Include 6-10 songs. No explanations, just the JSON array.`;
               }}
             >↺</button>
           )}
+          {!isOffline && (
+            <button
+              className="t-btn upload"
+              title="Upload audio file"
+              onClick={() => { uploadTargetRef.current = { track: t }; uploadFileRef.current?.click(); }}
+            >⬆</button>
+          )}
           <button
             className="t-btn remove"
             title="Remove"
@@ -581,6 +702,13 @@ Include 6-10 songs. No explanations, just the JSON array.`;
     <>
       <style>{STYLES}</style>
       <div id="yt-player-wrap"><div id="yt-player" /></div>
+      <input
+        ref={uploadFileRef}
+        type="file"
+        accept="audio/*"
+        style={{ display: "none" }}
+        onChange={handleUploadFile}
+      />
 
       <div className="app">
         {/* HEADER */}
@@ -607,6 +735,9 @@ Include 6-10 songs. No explanations, just the JSON array.`;
           </button>
           <button className={`tab${tab === "offline" ? " active" : ""}`} onClick={() => setTab("offline")}>
             Downloads {offlineTracks.length > 0 && <span className="tab-badge">{offlineTracks.length}</span>}
+          </button>
+          <button className={`tab${tab === "myplaylists" ? " active" : ""}`} onClick={() => setTab("myplaylists")}>
+            My Playlists {savedPlaylists.length > 0 && <span className="tab-badge">{savedPlaylists.length}</span>}
           </button>
         </div>
 
@@ -678,6 +809,11 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                     + Add Song
                   </button>
                   {playlist.length > 0 && (
+                    <button className="save-pl-btn" onClick={savePlaylist} title="Save playlist to My Playlists">
+                      Save ✦
+                    </button>
+                  )}
+                  {playlist.length > 0 && (
                     <button className="icon-btn danger" onClick={() => { setPlaylist([]); setCurrentIdx(null); }}>
                       Clear
                     </button>
@@ -700,15 +836,68 @@ Include 6-10 songs. No explanations, just the JSON array.`;
             <>
               <div className="pl-header">
                 <span style={{ fontSize: 15, fontWeight: 600 }}>Downloads</span>
+                <div className="pl-actions">
+                  <button
+                    className="icon-btn"
+                    onClick={() => { uploadTargetRef.current = { isNew: true }; uploadFileRef.current?.click(); }}
+                  >
+                    + Upload File
+                  </button>
+                </div>
               </div>
               {offlineTracks.length === 0 ? (
                 <div className="empty">
                   <div className="empty-icon">⚡</div>
                   <div className="empty-text">No offline tracks yet</div>
-                  <div className="empty-sub">Hit ⬇ on any song to save it for offline playback</div>
+                  <div className="empty-sub">Hit ⬇ or ⬆ on any song, or upload a file above</div>
                 </div>
               ) : (
                 offlineTracks.map((t, i) => renderRow(t, i, true))
+              )}
+            </>
+          )}
+
+          {tab === "myplaylists" && (
+            <>
+              <div className="pl-header">
+                <span style={{ fontSize: 15, fontWeight: 600 }}>My Playlists</span>
+              </div>
+              {/* New playlist form */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+                <input
+                  className="add-input"
+                  placeholder="New playlist name…"
+                  value={newPlName}
+                  onChange={(e) => setNewPlName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && createNewPlaylist()}
+                />
+                <button className="save-pl-btn" onClick={createNewPlaylist}>+ New</button>
+              </div>
+              {savedPlaylists.length === 0 ? (
+                <div className="empty">
+                  <div className="empty-icon">🎵</div>
+                  <div className="empty-text">No saved playlists yet</div>
+                  <div className="empty-sub">Build a playlist and hit Save ✦ to keep it</div>
+                </div>
+              ) : (
+                <div className="pl-list">
+                  {savedPlaylists.map((pl) => (
+                    <div key={pl.id} className="pl-card" onClick={() => loadPlaylist(pl)}>
+                      <div className="pl-card-icon">🎵</div>
+                      <div className="pl-card-info">
+                        <div className="pl-card-name">{pl.name}</div>
+                        <div className="pl-card-count">{pl.songs.length} songs</div>
+                      </div>
+                      <div className="pl-card-actions" onClick={(e) => e.stopPropagation()}>
+                        <button className="save-pl-btn" onClick={() => loadPlaylist(pl)}>Load</button>
+                        <button
+                          className="icon-btn danger"
+                          onClick={() => deletePlaylist(pl.id)}
+                        >✕</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}
