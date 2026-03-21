@@ -1,5 +1,11 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "functions": {
+    "api/stream-audio.js": { "maxDuration": 30 },
+    "api/download-audio.js": { "maxDuration": 30 },
+    "api/chat.js": { "maxDuration": 25 },
+    "api/suggest-downloads.js": { "maxDuration": 25 }
+  }
 }

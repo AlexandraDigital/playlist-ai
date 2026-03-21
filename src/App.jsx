@@ -91,15 +91,17 @@ export default function App() {
   const [offlineIds, setOfflineIds] = useState(new Set());
   const [downloading, setDownloading] = useState(new Set());
   const [dlProgress, setDlProgress] = useState({});
+  const [deviceDownloading, setDeviceDownloading] = useState(new Set());
+  const [volume, setVolume] = useState(1);
 
   // Manual search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  const [spotifyStatus, setSpotifyStatus] = useState(''); // 'loading' | 'done' | 'failed' | ''
+  const [spotifyStatus, setSpotifyStatus] = useState('');
 
-  // ── Smart Offline Picks state ──────────────────────────────────
+  // Smart Offline Picks state
   const [isSmartDl, setIsSmartDl] = useState(false);
   const [smartDlDone, setSmartDlDone] = useState(false);
 
@@ -111,7 +113,11 @@ export default function App() {
     dbKeys().then(ids => setOfflineIds(new Set(ids))).catch(() => {});
   }, []);
 
-  // ── Spotify enrichment (batched to avoid rate limits) ────────────
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
+
+  // ── Spotify enrichment ────────────────────────────────────────────
   async function enrichWithSpotify(songs) {
     return batchRun(songs, async song => {
       try {
@@ -135,12 +141,13 @@ export default function App() {
     }, 5);
   }
 
-  // ── Manual song search ───────────────────────────────────────────
+  // ── Manual song search via Spotify ───────────────────────────────
   async function searchSongs() {
     if (!searchQuery.trim() || isSearching) return;
     setIsSearching(true);
     setSearchResults([]);
     try {
+      // Search Spotify first
       const res = await fetch(
         `/api/spotify?q=${encodeURIComponent(searchQuery)}&limit=10&type=search`
       );
@@ -186,6 +193,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt }),
       });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       const text = data.content || data.message || data.reply || '';
@@ -194,17 +202,13 @@ export default function App() {
       setSuggestions(songs);
       setIsGenerating(false);
 
-      // Enrich with Spotify in batches
+      // Enrich with Spotify metadata in background
       setSpotifyStatus('loading');
       try {
         const enriched = await enrichWithSpotify(songs);
         setSuggestions(enriched);
 
-        const seeds = enriched
-          .map(s => s.spotifyId)
-          .filter(Boolean)
-          .slice(0, 5);
-
+        const seeds = enriched.map(s => s.spotifyId).filter(Boolean).slice(0, 5);
         if (seeds.length > 0) {
           try {
             const recRes = await fetch(`/api/spotify?seeds=${seeds.join(',')}&limit=20`);
@@ -288,6 +292,7 @@ export default function App() {
 
     try {
       if (track.videoId) {
+        // Check IndexedDB offline store first
         const stored = await dbGet(track.videoId);
         if (stored?.blob) {
           if (blobUrls.current[track.videoId]) URL.revokeObjectURL(blobUrls.current[track.videoId]);
@@ -299,6 +304,7 @@ export default function App() {
           await audio.play();
           return;
         }
+        // Stream live
         audio.src = `/api/stream-audio?videoId=${track.videoId}`;
         audio.load();
         setPlaying(true);
@@ -306,6 +312,7 @@ export default function App() {
         return;
       }
 
+      // Fall back to Spotify 30s preview
       if (track.previewUrl) {
         audio.src = track.previewUrl;
         previewUrlRef.current = null;
@@ -335,7 +342,7 @@ export default function App() {
     selectTrack(currentIdx === null ? 0 : (currentIdx - 1 + playlist.length) % playlist.length);
   }
 
-  // ── Download for offline ─────────────────────────────────────────
+  // ── Save for offline listening (IndexedDB) ────────────────────────
   async function downloadOffline(e, track) {
     e.stopPropagation();
     if (!track.videoId || downloading.has(track.videoId)) return;
@@ -349,6 +356,7 @@ export default function App() {
 
       const contentLength = res.headers.get('Content-Length');
       const total = contentLength ? parseInt(contentLength, 10) : null;
+      const contentType = res.headers.get('Content-Type') || 'audio/mp4';
 
       const reader = res.body.getReader();
       const chunks = [];
@@ -362,7 +370,7 @@ export default function App() {
         setDlProgress(prev => ({ ...prev, [track.videoId]: { received, total } }));
       }
 
-      const blob = new Blob(chunks);
+      const blob = new Blob(chunks, { type: contentType });
       await dbSave({
         videoId: track.videoId,
         blob,
@@ -372,10 +380,44 @@ export default function App() {
       });
       setOfflineIds(prev => new Set([...prev, track.videoId]));
     } catch (err) {
-      setError(`Download failed: ${err.message}`);
+      setError(`Save failed: ${err.message}`);
     } finally {
       setDownloading(prev => { const s = new Set(prev); s.delete(track.videoId); return s; });
       setDlProgress(prev => { const n = { ...prev }; delete n[track.videoId]; return n; });
+    }
+  }
+
+  // ── Download to device (saves file) ──────────────────────────────
+  async function downloadToDevice(e, track) {
+    e.stopPropagation();
+    if (!track.videoId || deviceDownloading.has(track.videoId)) return;
+
+    setDeviceDownloading(prev => new Set([...prev, track.videoId]));
+    try {
+      const params = new URLSearchParams({
+        videoId: track.videoId,
+        title: track.title,
+        artist: track.artist || '',
+      });
+      const res = await fetch(`/api/download-audio?${params}`);
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+      const contentType = res.headers.get('Content-Type') || 'audio/mp4';
+      const ext = contentType.includes('webm') ? 'webm' : 'm4a';
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${track.title}${track.artist ? ' - ' + track.artist : ''}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      setError(`Download failed: ${err.message}`);
+    } finally {
+      setDeviceDownloading(prev => { const s = new Set(prev); s.delete(track.videoId); return s; });
     }
   }
 
@@ -417,7 +459,6 @@ export default function App() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       const suggestions = data.suggestions || [];
-      // Immediately download all suggested tracks
       suggestions.forEach(s => {
         const track = playlist.find(
           t =>
@@ -430,7 +471,7 @@ export default function App() {
       });
       setSmartDlDone(true);
     } catch (e) {
-      setError(`AI download error: ${e.message}`);
+      setError(`AI picks error: ${e.message}`);
     } finally {
       setIsSmartDl(false);
     }
@@ -473,7 +514,7 @@ export default function App() {
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && generate()}
-          placeholder="e.g. chill lo-fi beats for late nights, 90s R&B classics..."
+          placeholder="e.g. chill lo-fi beats for late nights, 90s R&B classics…"
           disabled={isGenerating}
         />
         <button className="generate-btn" onClick={generate} disabled={isGenerating}>
@@ -501,7 +542,7 @@ export default function App() {
           className="toggle-search-btn"
           onClick={() => { setShowSearch(s => !s); setSearchResults([]); setSearchQuery(''); }}
         >
-          {showSearch ? '✕ Close search' : '🔍 Add any song manually'}
+          {showSearch ? '✕ Close search' : '🔍 Search any song'}
         </button>
       </div>
 
@@ -513,7 +554,7 @@ export default function App() {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && searchSongs()}
-              placeholder="Search any song or artist (e.g. Hotel California, Kendrick Lamar...)"
+              placeholder="Search Spotify — e.g. Hotel California, Kendrick Lamar…"
               autoFocus
             />
             <button className="generate-btn" onClick={searchSongs} disabled={isSearching}>
@@ -608,7 +649,7 @@ export default function App() {
           <h2>
             My Playlist
             {playlist.length > 0 && <span className="count">{playlist.length}</span>}
-            {offlineIds.size > 0 && <span className="offline-count">💾 {offlineIds.size} offline</span>}
+            {offlineIds.size > 0 && <span className="offline-count">💾 {offlineIds.size} saved</span>}
           </h2>
 
           {/* ── AI Smart Offline Picks ── */}
@@ -618,7 +659,7 @@ export default function App() {
                 className="ai-offline-btn"
                 onClick={aiDownloadPicks}
                 disabled={isSmartDl}
-                title="AI picks and downloads the best songs from your playlist for offline listening"
+                title="AI picks the best songs and saves them for offline listening"
               >
                 {isSmartDl
                   ? <><span className="spinner" /> AI picking songs…</>
@@ -639,6 +680,7 @@ export default function App() {
               {playlist.map((track, i) => {
                 const prog = track.videoId ? dlProgress[track.videoId] : null;
                 const isDownloading = track.videoId && downloading.has(track.videoId);
+                const isDeviceDl = track.videoId && deviceDownloading.has(track.videoId);
                 const pct = prog?.total
                   ? Math.min(100, Math.round((prog.received / prog.total) * 100))
                   : null;
@@ -683,20 +725,35 @@ export default function App() {
                           : currentIdx === i && playing ? '▶' : null}
                       </div>
                     )}
-                    {track.videoId && !track.loading && !isDownloading && (
-                      offlineIds.has(track.videoId) ? (
+                    {/* Download buttons */}
+                    {track.videoId && !track.loading && (
+                      <div className="track-actions">
+                        {/* Save for offline in-app */}
+                        {!isDownloading && (
+                          offlineIds.has(track.videoId) ? (
+                            <button
+                              className="offline-badge"
+                              onClick={e => removeOffline(e, track.videoId)}
+                              title="Saved offline — click to remove"
+                            >💾</button>
+                          ) : (
+                            <button
+                              className="download-btn"
+                              onClick={e => downloadOffline(e, track)}
+                              title="Save for offline listening"
+                            >💾</button>
+                          )
+                        )}
+                        {/* Download to device */}
                         <button
-                          className="offline-badge"
-                          onClick={e => removeOffline(e, track.videoId)}
-                          title="Saved offline — click to remove"
-                        >💾</button>
-                      ) : (
-                        <button
-                          className="download-btn"
-                          onClick={e => downloadOffline(e, track)}
-                          title="Save for offline"
-                        >⬇️</button>
-                      )
+                          className={`device-dl-btn ${isDeviceDl ? 'loading' : ''}`}
+                          onClick={e => downloadToDevice(e, track)}
+                          disabled={isDeviceDl}
+                          title="Download audio file to device"
+                        >
+                          {isDeviceDl ? <span className="spinner" style={{ width: 10, height: 10 }} /> : '⬇'}
+                        </button>
+                      </div>
                     )}
                     <button className="remove-btn" onClick={e => removeFromPlaylist(e, i)}>✕</button>
                   </div>
@@ -728,6 +785,19 @@ export default function App() {
               {playing ? '⏸' : '▶'}
             </button>
             <button className="ctrl-btn" onClick={playNext} title="Next">⏭</button>
+          </div>
+          <div className="volume-wrap">
+            <span className="volume-icon">{volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊'}</span>
+            <input
+              type="range"
+              className="volume-slider"
+              min="0"
+              max="1"
+              step="0.02"
+              value={volume}
+              onChange={e => setVolume(parseFloat(e.target.value))}
+              title={`Volume: ${Math.round(volume * 100)}%`}
+            />
           </div>
         </div>
       )}
