@@ -50,14 +50,19 @@ async function dbKeys() {
   });
 }
 
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // ── Parse AI response into song list ──────────────────────────────
 function parseSongs(text) {
   const lines = text.split('\n').filter(l => l.trim());
   const songs = [];
   for (const line of lines) {
     const m =
-      line.match(/^\d*[\.\)]\s*(.+?)\s*[-–—]\s*(.+)$/) ||
-      line.match(/^\d*[\.\)]\s*(.+?)\s+by\s+(.+)$/i);
+      line.match(/^\d*[\.)] *(.+?) *[-–—] *(.+)$/) ||
+      line.match(/^\d*[\.)] *(.+?) +by +(.+)$/i);
     if (m) songs.push({ title: m[1].trim(), artist: m[2].trim(), videoId: null });
   }
   return songs.slice(0, 15);
@@ -74,11 +79,12 @@ export default function App() {
   const [error, setError] = useState('');
   const [offlineIds, setOfflineIds] = useState(new Set());
   const [downloading, setDownloading] = useState(new Set());
+  // { [videoId]: { received: number, total: number | null } }
+  const [dlProgress, setDlProgress] = useState({});
 
   const audioRef = useRef(null);
   const blobUrls = useRef({});
 
-  // Load saved offline IDs from IndexedDB on mount
   useEffect(() => {
     dbKeys().then(ids => setOfflineIds(new Set(ids))).catch(() => {});
   }, []);
@@ -108,7 +114,7 @@ export default function App() {
     }
   }
 
-  // ── Add song to playlist (auto-fetch video ID) ───────────────────
+  // ── Add song to playlist ─────────────────────────────────────────
   async function addToPlaylist(song) {
     const key = `${song.title}__${song.artist}`;
     if (playlist.some(t => `${t.title}__${t.artist}` === key)) return;
@@ -141,7 +147,6 @@ export default function App() {
     audio.pause();
 
     try {
-      // Try offline first
       const stored = await dbGet(track.videoId);
       if (stored?.blob) {
         if (blobUrls.current[track.videoId]) URL.revokeObjectURL(blobUrls.current[track.videoId]);
@@ -152,7 +157,6 @@ export default function App() {
         await audio.play();
         return;
       }
-      // Stream online
       const res = await fetch(`/api/youtube-audio?videoId=${track.videoId}`);
       const data = await res.json();
       if (!data.url) throw new Error('No stream URL returned');
@@ -181,21 +185,44 @@ export default function App() {
     selectTrack(currentIdx === null ? 0 : (currentIdx - 1 + playlist.length) % playlist.length);
   }
 
-  // ── Download for offline ─────────────────────────────────────────
+  // ── Download for offline (with progress) ────────────────────────
   async function downloadOffline(e, track) {
     e.stopPropagation();
     if (!track.videoId || downloading.has(track.videoId)) return;
+
     setDownloading(prev => new Set([...prev, track.videoId]));
+    setDlProgress(prev => ({ ...prev, [track.videoId]: { received: 0, total: null } }));
+
     try {
       const res = await fetch(`/api/download-audio?videoId=${track.videoId}`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const blob = await res.blob();
+
+      const contentLength = res.headers.get('Content-Length');
+      const total = contentLength ? parseInt(contentLength, 10) : null;
+
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        setDlProgress(prev => ({
+          ...prev,
+          [track.videoId]: { received, total },
+        }));
+      }
+
+      const blob = new Blob(chunks);
       await dbSave({ videoId: track.videoId, blob, title: track.title, artist: track.artist });
       setOfflineIds(prev => new Set([...prev, track.videoId]));
-    } catch (e) {
-      setError(`Download failed: ${e.message}`);
+    } catch (err) {
+      setError(`Download failed: ${err.message}`);
     } finally {
       setDownloading(prev => { const s = new Set(prev); s.delete(track.videoId); return s; });
+      setDlProgress(prev => { const n = { ...prev }; delete n[track.videoId]; return n; });
     }
   }
 
@@ -309,41 +336,63 @@ export default function App() {
             </div>
           ) : (
             <div className="track-list">
-              {playlist.map((track, i) => (
-                <div
-                  key={i}
-                  className={`track ${currentIdx === i ? 'active' : ''}`}
-                  onClick={() => selectTrack(i)}
-                >
-                  <div className="track-num">
-                    {track.loading
-                      ? <span className="spinner" style={{ width: 12, height: 12 }} />
-                      : currentIdx === i && playing ? '▶' : i + 1}
+              {playlist.map((track, i) => {
+                const prog = track.videoId ? dlProgress[track.videoId] : null;
+                const isDownloading = track.videoId && downloading.has(track.videoId);
+                const pct = prog?.total
+                  ? Math.min(100, Math.round((prog.received / prog.total) * 100))
+                  : null;
+
+                return (
+                  <div
+                    key={i}
+                    className={`track ${currentIdx === i ? 'active' : ''}`}
+                    onClick={() => selectTrack(i)}
+                  >
+                    <div className="track-num">
+                      {track.loading
+                        ? <span className="spinner" style={{ width: 12, height: 12 }} />
+                        : currentIdx === i && playing ? '▶' : i + 1}
+                    </div>
+                    <div className="track-details">
+                      <div className="track-title">{track.title}</div>
+                      <div className="track-artist">{track.artist}</div>
+                      {/* Download progress bar */}
+                      {isDownloading && (
+                        <div className="dl-progress-wrap">
+                          <div
+                            className={`dl-progress-bar ${pct === null ? 'indeterminate' : ''}`}
+                            style={pct !== null ? { width: `${pct}%` } : {}}
+                          />
+                          <span className="dl-progress-label">
+                            {pct !== null
+                              ? `${pct}%`
+                              : prog?.received
+                              ? formatBytes(prog.received)
+                              : 'Saving…'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {track.videoId && !track.loading && !isDownloading && (
+                      offlineIds.has(track.videoId) ? (
+                        <button
+                          className="offline-badge"
+                          onClick={e => removeOffline(e, track.videoId)}
+                          title="Saved offline — click to remove"
+                        >💾</button>
+                      ) : (
+                        <button
+                          className="download-btn"
+                          onClick={e => downloadOffline(e, track)}
+                          title="Save for offline"
+                        >⬇️</button>
+                      )
+                    )}
+                    <button className="remove-btn" onClick={e => removeFromPlaylist(e, i)}>✕</button>
                   </div>
-                  <div className="track-details">
-                    <div className="track-title">{track.title}</div>
-                    <div className="track-artist">{track.artist}</div>
-                  </div>
-                  {track.videoId && !track.loading && (
-                    offlineIds.has(track.videoId) ? (
-                      <button
-                        className="offline-badge"
-                        onClick={e => removeOffline(e, track.videoId)}
-                        title="Saved offline — click to remove"
-                      >💾</button>
-                    ) : downloading.has(track.videoId) ? (
-                      <span className="spinner" style={{ width: 14, height: 14, flexShrink: 0 }} />
-                    ) : (
-                      <button
-                        className="download-btn"
-                        onClick={e => downloadOffline(e, track)}
-                        title="Save for offline"
-                      >⬇️</button>
-                    )
-                  )}
-                  <button className="remove-btn" onClick={e => removeFromPlaylist(e, i)}>✕</button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

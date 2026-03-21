@@ -302,6 +302,37 @@ body {
 }
 .ctrl-btn.play-pause:hover { opacity: 0.9; background: linear-gradient(135deg, #7c3aed, #4f46e5); }
 
+/* ── Download progress ── */
+.dl-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  height: 12px;
+  width: 100%;
+}
+.dl-progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #7c3aed, #6366f1);
+  transition: width 0.15s ease;
+  min-width: 4px;
+}
+.dl-progress-bar.indeterminate {
+  width: 40% !important;
+  background: linear-gradient(90deg, transparent, #a78bfa, transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite linear;
+}
+.dl-progress-label {
+  font-size: 0.65rem;
+  color: #a78bfa;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ── Spinner ── */
 .spinner {
   width: 18px; height: 18px;
