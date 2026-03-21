@@ -1,0 +1,73 @@
+export async function onRequest(context) {
+  const { request, env } = context;
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }
+
+  const url = new URL(request.url);
+  const q = url.searchParams.get("q");
+  const type = url.searchParams.get("type") || "track";
+
+  if (!q) {
+    return new Response(JSON.stringify({ error: "Missing query" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const clientId = env.SPOTIFY_CLIENT_ID;
+  const clientSecret = env.SPOTIFY_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return new Response(
+      JSON.stringify({ error: "Spotify credentials not configured" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  try {
+    // Spotify Client Credentials flow (no user login needed)
+    const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: "Basic " + btoa(`${clientId}:${clientSecret}`),
+      },
+      body: "grant_type=client_credentials",
+    });
+
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      return new Response(
+        JSON.stringify({ error: "Failed to get Spotify token", details: tokenData }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const searchRes = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=${type}&limit=3&market=US`,
+      { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
+    );
+
+    const data = await searchRes.json();
+
+    return new Response(JSON.stringify(data), {
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
