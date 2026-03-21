@@ -192,7 +192,7 @@ export default function App() {
     setDlProgress(prev => ({ ...prev, [track.videoId]: { received: 0, total: null } }));
 
     try {
-      const res = await fetch(`/api/download-audio?videoId=${track.videoId}`);
+      const res = await fetch(`/api/stream-audio?videoId=${track.videoId}`);
       if (!res.ok) throw new Error(`Server error ${res.status}`);
 
       const contentLength = res.headers.get('Content-Length');
