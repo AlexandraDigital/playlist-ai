@@ -6,11 +6,12 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { message } = req.body;
-    if (!message) return res.status(400).json({ error: 'Missing message' });
+    const { prompt, message } = req.body;
+    const userInput = prompt || message;
+    if (!userInput) return res.status(400).json({ error: 'Missing prompt' });
 
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured in environment variables' });
+    if (!apiKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -23,11 +24,11 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'system',
-            content: `You are a music expert AI. When given a music vibe or prompt, respond with ONLY a valid JSON array of exactly 12 song recommendations. Format: [{"title": "Song Name", "artist": "Artist Name"}]. No explanation, no markdown code blocks, no extra text — just the raw JSON array.`,
+            content: `You are a music expert AI. When given a music vibe or prompt, respond with ONLY a numbered list of exactly 12 song recommendations, one per line, in this exact format:\n1. Song Title - Artist Name\n2. Song Title - Artist Name\n...\nNo extra text, no markdown, just the numbered list.`,
           },
-          { role: 'user', content: message },
+          { role: 'user', content: userInput },
         ],
-        max_tokens: 800,
+        max_tokens: 600,
         temperature: 0.8,
       }),
     });
