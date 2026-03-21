@@ -153,12 +153,14 @@ export default function App() {
         const url = URL.createObjectURL(stored.blob);
         blobUrls.current[track.videoId] = url;
         audio.src = url;
+        audio.load();
         setPlaying(true);
         await audio.play();
         return;
       }
       // Use the server-side proxy so CORS doesn't block playback
       audio.src = `/api/stream-audio?videoId=${track.videoId}`;
+      audio.load();
       setPlaying(true);
       await audio.play();
     } catch (e) {
@@ -256,7 +258,11 @@ export default function App() {
         onEnded={playNext}
         onPause={() => setPlaying(false)}
         onPlay={() => setPlaying(true)}
-        onError={playNext}
+        onError={e => {
+          const err = e.target.error;
+          setError(`Audio error: ${err ? err.message : 'failed to load stream'}`);
+          setPlaying(false);
+        }}
       />
 
       <div className="header">
