@@ -866,7 +866,14 @@ export default function App() {
         if (!track?.videoId) return;
 
         const blobUrl = blobUrlsRef.current[track.videoId];
-        if (!blobUrl) return;
+        if (!blobUrl) {
+          // No local blob — let the YT player keep running in background.
+          // Signal the OS that playback is still active so it doesn't kill the session.
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+          }
+          return;
+        }
 
         // Prefer time from an already-running audio element, fall back to YT
         const currentTime = audioRef.current
@@ -879,7 +886,18 @@ export default function App() {
         const a = new Audio(blobUrl);
         audioRef.current = a;
         a.currentTime = currentTime;
-        a.onended = () => skipNextRef.current?.();
+        a._tlEnded = false;
+        a.onended = () => { a._tlEnded = true; skipNextRef.current?.(); };
+        // Recover from OS audio-session interruptions (screen-off / charging on iOS+Android)
+        a.onpause = () => {
+          if (playingRef.current && !a._tlEnded && audioRef.current === a) {
+            setTimeout(() => {
+              if (playingRef.current && !a._tlEnded && audioRef.current === a) {
+                a.play().catch(() => {});
+              }
+            }, 200);
+          }
+        };
         a.addEventListener("playing", () => {
           ytPlayerRef.current?.pauseVideo?.();
         }, { once: true });
@@ -911,7 +929,17 @@ export default function App() {
           const a = new Audio(url);
           audioRef.current = a;
           a.currentTime = t;
-          a.onended = () => skipNextRef.current?.();
+          a._tlEnded = false;
+          a.onended = () => { a._tlEnded = true; skipNextRef.current?.(); };
+          a.onpause = () => {
+            if (playingRef.current && !a._tlEnded && audioRef.current === a) {
+              setTimeout(() => {
+                if (playingRef.current && !a._tlEnded && audioRef.current === a) {
+                  a.play().catch(() => {});
+                }
+              }, 200);
+            }
+          };
           a.play().catch(() => {});
           return;
         }
@@ -987,8 +1015,19 @@ export default function App() {
       if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
       const a = new Audio(url);
       audioRef.current = a;
+      a._tlEnded = false;
+      a.onended = () => { a._tlEnded = true; skipNextRef.current?.(); };
+      // Recover from OS audio-session interruptions (screen-off / charging)
+      a.onpause = () => {
+        if (playingRef.current && !a._tlEnded && audioRef.current === a) {
+          setTimeout(() => {
+            if (playingRef.current && !a._tlEnded && audioRef.current === a) {
+              a.play().catch(() => {});
+            }
+          }, 200);
+        }
+      };
       a.play().catch(() => {});
-      a.onended = () => skipNextRef.current?.();
       return;
     }
 
