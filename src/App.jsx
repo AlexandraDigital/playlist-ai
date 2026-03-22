@@ -970,10 +970,11 @@ export default function App() {
 
   const skipNext = useCallback(() => {
     const list = tabRef.current === "offline" ? offlineTracks : playlistRef.current;
+    if (!list.length) return;
     setCurrentIdx((i) => {
-      const next = (i ?? -1) + 1;
-      if (next < list.length) { setTimeout(() => playTrack(next, list), 100); return next; }
-      setPlaying(false); return i;
+      const next = ((i ?? -1) + 1) % list.length;   // wrap around → playlist loops
+      setTimeout(() => playTrack(next, list), 100);
+      return next;
     });
   }, [offlineTracks, playTrack]);
   useEffect(() => { skipNextRef.current = skipNext; }, [skipNext]);
