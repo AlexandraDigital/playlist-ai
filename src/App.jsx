@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 const PAYPAL_CLIENT_ID = "AXNMWGjP12GGzjRS4hXihdVeXUZNsvT38UqJzJSoI0N9WsV67zo5fyV46CbB5Sp_f2wKnLzvfgyoieI8";
-const FREE_GEN_LIMIT = 3;
+const FREE_GEN_LIMIT = 5;
 
 const TRANSLATIONS = {
   en: {
@@ -1033,7 +1033,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
     } finally {
       setAiLoading(false);
     }
-  }, [aiInput, aiLoading, aiMsgs, isPro, aiGenCount]);
+  }, [aiInput, aiLoading, aiMsgs, isPro, aiGenCount, language]);
 
   const handleGenerate = () => {
     if (query.trim()) { sendAI(query.trim()); setQuery(""); }
@@ -1123,7 +1123,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
     } catch (e) {
       setSyncStatus({ msg: `Error: ${e.message}`, type: "err" });
     }
-  }, [syncCode, savedPlaylists]);
+  }, [syncCode, savedPlaylists, tr]);
 
   const handlePullSync = useCallback(async () => {
     const code = importCode.trim().toUpperCase();
@@ -1141,7 +1141,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
     } catch (e) {
       setSyncStatus({ msg: `Error: ${e.message}`, type: "err" });
     }
-  }, [importCode, savedPlaylists]);
+  }, [importCode, savedPlaylists, tr]);
 
   /* ── Render track row ───────────────────────────────────────── */
   const renderRow = (t, idx, isOffline = false) => {
@@ -1410,7 +1410,7 @@ Include 6-10 songs. No explanations, just the JSON array.`;
                 <span style={{ fontSize: 15, fontWeight: 600 }}>{tr.tabDownloads}</span>
                 <div className="pl-actions">
                   <button className="icon-btn" onClick={() => { uploadTargetRef.current = { isNew: true }; uploadFileRef.current?.click(); }}>
-                    + Upload File
+                    {tr.uploadFile}
                   </button>
                 </div>
               </div>
