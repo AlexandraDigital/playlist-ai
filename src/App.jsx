@@ -434,6 +434,13 @@ const STYLES = `
   /* UPLOAD */
   .t-btn.upload:hover { border-color:rgba(168,85,247,.4); color:var(--purple-light); }
 
+  /* DRAG AND DROP */
+  .drag-handle { color:var(--muted); cursor:grab; font-size:15px; flex-shrink:0; padding:0 4px; user-select:none; line-height:1; }
+  .drag-handle:hover { color:var(--sub); }
+  .drag-handle:active { cursor:grabbing; }
+  .track-row.dragging { opacity:0.35; background:var(--purple-dim); }
+  .track-row.drag-over { border-bottom:2px solid var(--purple); background:rgba(168,85,247,0.07); }
+
   /* AI SUGGESTIONS */
   .suggest-list { display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto; margin-top:4px; }
   .suggest-row { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:8px;
@@ -664,6 +671,8 @@ export default function App() {
   const [newPlName, setNewPlName] = useState("");
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [aiSelected, setAiSelected] = useState(new Set());
+  const [dragIdx, setDragIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -1276,18 +1285,48 @@ export default function App() {
     }
   }, [importCode, savedPlaylists, tr]);
 
+  /* ── Drag and drop reorder ──────────────────────────────────── */
+  const handleDrop = useCallback((toIdx) => {
+    if (dragIdx === null || dragIdx === toIdx) return;
+    const newPlaylist = [...playlistRef.current];
+    const [removed] = newPlaylist.splice(dragIdx, 1);
+    newPlaylist.splice(toIdx, 0, removed);
+    setPlaylist(newPlaylist);
+    if (currentIdx !== null) {
+      if (currentIdx === dragIdx) {
+        setCurrentIdx(toIdx);
+      } else if (dragIdx < currentIdx && toIdx >= currentIdx) {
+        setCurrentIdx(currentIdx - 1);
+      } else if (dragIdx > currentIdx && toIdx <= currentIdx) {
+        setCurrentIdx(currentIdx + 1);
+      }
+    }
+    setDragIdx(null);
+    setDragOverIdx(null);
+  }, [dragIdx, currentIdx]);
+
   /* ── Render track row ───────────────────────────────────────── */
   const renderRow = (t, idx, isOffline = false) => {
     const isPlaying = currentIdx === idx && playing && tab === (isOffline ? "offline" : "playlist");
     const dl = dlStatus[t.videoId];
     const isOfflineSaved = !!offlineTracks.find((o) => o.videoId === t.videoId);
+    const isDragging = !isOffline && dragIdx === idx;
+    const isDragOver = !isOffline && dragOverIdx === idx && dragIdx !== idx;
 
     return (
       <div
         key={t.id || t.videoId}
-        className={`track-row${isPlaying ? " playing" : ""}`}
+        className={`track-row${isPlaying ? " playing" : ""}${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
+        draggable={!isOffline}
+        onDragStart={!isOffline ? (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; } : undefined}
+        onDragOver={!isOffline ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverIdx(idx); } : undefined}
+        onDrop={!isOffline ? (e) => { e.preventDefault(); handleDrop(idx); } : undefined}
+        onDragEnd={!isOffline ? () => { setDragIdx(null); setDragOverIdx(null); } : undefined}
         onClick={() => { setTab(isOffline ? "offline" : "playlist"); playTrack(idx); }}
       >
+        {!isOffline && (
+          <div className="drag-handle" onMouseDown={(e) => e.stopPropagation()} title="Drag to reorder">⠿</div>
+        )}
         <div className="track-num">{isPlaying ? "▶" : idx + 1}</div>
 
         {t.thumbnail ? (
