@@ -798,7 +798,7 @@ export default function App() {
           onStateChange: (e) => {
             if (e.data === window.YT.PlayerState.PLAYING) setPlaying(true);
             if (e.data === window.YT.PlayerState.PAUSED) setPlaying(false);
-            if (e.data === window.YT.PlayerState.ENDED) skipNext();
+            if (e.data === window.YT.PlayerState.ENDED) skipNextRef.current?.();
           },
         },
       });
@@ -856,28 +856,74 @@ export default function App() {
 
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (!document.hidden || !playingRef.current) return;
-      const idx = currentIdxRef.current;
-      if (idx === null) return;
-      const list = playlistRef.current;
-      const track = list[idx];
-      if (!track?.videoId) return;
+      if (document.hidden) {
+        // ── Screen locked / tab hidden ────────────────────────────────────────
+        if (!playingRef.current) return;
+        const idx = currentIdxRef.current;
+        if (idx === null) return;
+        const list = playlistRef.current;
+        const track = list[idx];
+        if (!track?.videoId) return;
 
-      const blobUrl = blobUrlsRef.current[track.videoId];
-      if (blobUrl) {
-        // Bug fix: prefer currentTime from the audio element when it is already
-      // playing (e.g. second background transition); fall back to YT player.
-      const currentTime = audioRef.current
+        const blobUrl = blobUrlsRef.current[track.videoId];
+        if (!blobUrl) return;
+
+        // Prefer time from an already-running audio element, fall back to YT
+        const currentTime = audioRef.current
           ? audioRef.current.currentTime
           : (ytPlayerRef.current?.getCurrentTime?.() || 0);
-        ytPlayerRef.current?.pauseVideo?.();
+
+        // Start the <audio> element first, then pause YT once it's playing —
+        // this closes the gap that caused the audible cut.
         if (audioRef.current) { audioRef.current.pause(); }
         const a = new Audio(blobUrl);
         audioRef.current = a;
         a.currentTime = currentTime;
-        a.play().catch(() => {});
-        // Bug fix: use ref so onended always calls the latest skipNext
         a.onended = () => skipNextRef.current?.();
+        a.addEventListener("playing", () => {
+          ytPlayerRef.current?.pauseVideo?.();
+        }, { once: true });
+        a.play().catch(() => { ytPlayerRef.current?.pauseVideo?.(); });
+
+        if ("mediaSession" in navigator) {
+          navigator.mediaSession.playbackState = "playing";
+        }
+      } else {
+        // ── Screen unlocked / tab visible ─────────────────────────────────────
+        // Stop the background <audio> fallback so the YT player can take over
+        // without both sources playing simultaneously (the source of the glitch).
+        if (!audioRef.current) return;
+        const t = audioRef.current.currentTime;
+        audioRef.current.pause();
+        audioRef.current = null;
+
+        if (!playingRef.current) return; // user had paused while locked — keep paused
+
+        const idx = currentIdxRef.current;
+        if (idx === null) return;
+        const list = playlistRef.current;
+        const track = list[idx];
+
+        // For offline-only tracks there is no YT player — re-play from blob
+        if (!track?.videoId) {
+          const url = track?.blobUrl || blobUrlsRef.current?.[track?.videoId];
+          if (!url) return;
+          const a = new Audio(url);
+          audioRef.current = a;
+          a.currentTime = t;
+          a.onended = () => skipNextRef.current?.();
+          a.play().catch(() => {});
+          return;
+        }
+
+        // Hand playback back to the YT player
+        if (ytPlayerRef.current?.seekTo) {
+          ytPlayerRef.current.seekTo(t, true);
+          ytPlayerRef.current.playVideo();
+        }
+        if ("mediaSession" in navigator) {
+          navigator.mediaSession.playbackState = "playing";
+        }
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -942,7 +988,7 @@ export default function App() {
       const a = new Audio(url);
       audioRef.current = a;
       a.play().catch(() => {});
-      a.onended = () => skipNext();
+      a.onended = () => skipNextRef.current?.();
       return;
     }
 
