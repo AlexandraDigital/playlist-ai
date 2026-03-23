@@ -685,6 +685,7 @@ export default function App() {
   const [addForm, setAddForm] = useState({ title: "", artist: "", duration: "" });
   const [currentIdx, setCurrentIdx] = useState(null);
   const [playing, setPlaying] = useState(false);
+  const [playingSource, setPlayingSource] = useState("playlist"); // "playlist" | "offline"
   const [dlStatus, setDlStatus] = useState({});
   const [offlineTracks, setOfflineTracks] = useState([]);
   const [savedPlaylists, setSavedPlaylists] = useState(() => {
@@ -739,6 +740,7 @@ export default function App() {
   const playingRef = useRef(playing);
   const isProRef = useRef(isPro);
   const tabRef = useRef(tab);
+  const playingSourceRef = useRef("playlist"); // tracks which list is actively playing
   // Refs so lock-screen / background handlers always call the latest version
   const skipNextRef = useRef(null);
   const skipPrevRef = useRef(null);
@@ -1052,7 +1054,7 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  const currentTrack = tab === "offline"
+  const currentTrack = playingSource === "offline"
     ? offlineTracks[currentIdx] || null
     : playlist[currentIdx] || null;
 
@@ -1078,8 +1080,11 @@ export default function App() {
   }, [dlStatus]);
 
   /* ── Play track ─────────────────────────────────────────────── */
-  const playTrack = useCallback((idx, trackList) => {
-    const list = trackList || (tabRef.current === "offline" ? offlineTracks : playlistRef.current);
+  const playTrack = useCallback((idx, trackList, source) => {
+    const src = source ?? (trackList ? (trackList === offlineTracks ? "offline" : "playlist") : (tabRef.current === "offline" ? "offline" : "playlist"));
+    playingSourceRef.current = src;
+    setPlayingSource(src);
+    const list = trackList || (src === "offline" ? offlineTracks : playlistRef.current);
     const t = list[idx];
     if (!t) return;
     setCurrentIdx(idx);
@@ -1149,7 +1154,7 @@ export default function App() {
   }, [offlineTracks, downloadAndSave]);
 
   const skipNext = useCallback(() => {
-    const list = tabRef.current === "offline" ? offlineTracks : playlistRef.current;
+    const list = playingSourceRef.current === "offline" ? offlineTracks : playlistRef.current;
     if (!list.length) return;
     setCurrentIdx((i) => {
       const next = ((i ?? -1) + 1) % list.length;   // wrap around → playlist loops
@@ -1160,18 +1165,24 @@ export default function App() {
   useEffect(() => { skipNextRef.current = skipNext; }, [skipNext]);
 
   const skipPrev = useCallback(() => {
+    const list = playingSourceRef.current === "offline" ? offlineTracks : playlistRef.current;
     setCurrentIdx((i) => {
       const prev = (i ?? 1) - 1;
-      if (prev >= 0) { setTimeout(() => playTrack(prev), 100); return prev; }
+      if (prev >= 0) { setTimeout(() => playTrack(prev, list), 100); return prev; }
       return i;
     });
-  }, [playTrack]);
+  }, [playTrack, offlineTracks]);
   useEffect(() => { skipPrevRef.current = skipPrev; }, [skipPrev]);
 
   const togglePlay = useCallback(() => {
-    if (currentIdx === null) { playTrack(0); return; }
+    if (currentIdx === null) { playTrack(0, undefined, tabRef.current === "offline" ? "offline" : "playlist"); return; }
     if (audioRef.current) {
-      if (playing) audioRef.current.pause(); else audioRef.current.play();
+      if (playing) {
+        playingRef.current = false; // sync update before .pause() fires onpause, prevents 200ms auto-resume
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
       setPlaying(!playing); return;
     }
     if (ytPlayerRef.current) {
@@ -1184,6 +1195,16 @@ export default function App() {
   const addTrack = useCallback(async (track) => {
     if (playlistRef.current.find((t) => t.title === track.title && t.artist === track.artist)) return;
     const id = Date.now() + Math.random();
+
+    // Fast path: videoId already known (e.g. added from Downloads tab) — skip re-searching
+    if (track.videoId) {
+      setPlaylist((p) => [...p, { ...track, id, ytStatus: "found" }]);
+      if (blobUrlsRef.current[track.videoId]) {
+        setDlStatus((s) => ({ ...s, [track.videoId]: "done" }));
+      }
+      return;
+    }
+
     setPlaylist((p) => [...p, { ...track, id, videoId: null, thumbnail: null, ytStatus: "searching" }]);
 
     const [yt, spotify] = await Promise.all([
@@ -1406,7 +1427,8 @@ export default function App() {
       const tx = db.transaction("offline", "readwrite");
       const store = tx.objectStore("offline");
       newTracks.forEach((t, i) => {
-        store.put({ ...t, order: i });
+        const { blobUrl, ...toStore } = t; // strip ephemeral blobUrl — invalid after reload
+        store.put({ ...toStore, order: i });
       });
     })();
     if (currentIdx !== null && tab === "offline") {
@@ -1435,7 +1457,7 @@ export default function App() {
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; isOffline ? setOffDragOverIdx(idx) : setDragOverIdx(idx); }}
         onDrop={(e) => { e.preventDefault(); isOffline ? handleOfflineDrop(idx) : handleDrop(idx); }}
         onDragEnd={() => { isOffline ? (setOffDragIdx(null), setOffDragOverIdx(null)) : (setDragIdx(null), setDragOverIdx(null)); }}
-        onClick={() => { setTab(isOffline ? "offline" : "playlist"); playTrack(idx); }}
+        onClick={() => { setTab(isOffline ? "offline" : "playlist"); playTrack(idx, undefined, isOffline ? "offline" : "playlist"); }}
       >
         <div className="drag-handle" onMouseDown={(e) => e.stopPropagation()} title="Drag to reorder">⠿</div>
         <div className="track-num">{isPlaying ? "▶" : idx + 1}</div>
@@ -1484,7 +1506,7 @@ export default function App() {
           {isOffline && (
             <button className="t-btn add-pl" title="Add to playlist" onClick={() => {
               if (!playlistRef.current.find((x) => x.title === t.title && x.artist === t.artist)) {
-                addTrack({ title: t.title, artist: t.artist, duration: t.duration });
+                addTrack({ title: t.title, artist: t.artist, duration: t.duration, videoId: t.videoId, thumbnail: t.thumbnail });
               }
             }}>🎵</button>
           )}
