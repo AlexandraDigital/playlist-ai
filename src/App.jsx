@@ -1899,7 +1899,7 @@ export default function App() {
       </div>
 
       {/* PRO MODAL */}
-      {showPro && (
+      showPro && (
         <div className="pro-overlay" onClick={() => setShowPro(false)}>
           <div className="pro-modal" onClick={(e) => e.stopPropagation()}>
             {isPro ? (
@@ -1939,6 +1939,19 @@ export default function App() {
               </>
             )};
             )};
+           );
+           )};
+       }    };
+       )
+        )    )};
+         }  )};
+         
+
+
+          };
+            };  
+            };
+            };
           </div>
       
         </div>
@@ -1946,3 +1959,4 @@ export default function App() {
     </>
    )
    
+  }
