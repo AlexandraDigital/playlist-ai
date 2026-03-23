@@ -1206,7 +1206,7 @@ export default function App() {
                           if (yt?.videoId || spotify?.spotifyId) {
                               setPlaylist((p) => [
                                     ...p,
-                            ? ({
+                             ({
                                                   ...track,
                                                           id,
                                                                   videoId: yt?.videoId || null,
@@ -1265,7 +1265,7 @@ export default function App() {
     if (yt?.videoId && blobUrlsRef.current[yt.videoId]) {
       setDlStatus((s) => ({ ...s, [yt.videoId]: "done" }));
     }
-  }, []);
+  []);
 
   /* ── AI generate ────────────────────────────────────────────── */
   const sendAI = useCallback(async (userMsg) => {
