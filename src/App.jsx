@@ -47,8 +47,16 @@ export default function App() {
     audioRef.current.play();
   };
 
+
   const generateAI = () => {
-    alert("AI coming (or connect backend)");
+  const fakeSongs = [
+    { title: "Chill Vibes 🌙", videoId: "1", url: "" },
+    { title: "Night Drive 🚗", videoId: "2", url: "" },
+    { title: "Deep Focus 🎧", videoId: "3", url: "" },
+  ];
+
+  setPlaylist(fakeSongs);
+};
   };
 
   const handleUpload = (e) => {
@@ -90,33 +98,46 @@ export default function App() {
     </div>
 
     {/* Upload */}
-    <input
-      type="file"
-      accept="audio/*"
-      onChange={handleUpload}
-      className="mb-6 text-sm"
-    />
+   <label className="mb-6 cursor-pointer bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl shadow-lg transition">
+  Upload Music 🎵
+  <input
+    type="file"
+    accept="audio/*"
+    onChange={handleUpload}
+    className="hidden"
+  />
+</label>
 
-    {/* Playlist */}
-    <div className="w-full max-w-md flex flex-col gap-3">
-      {playlist.map((t, i) => (
-        <div
-          key={i}
-          className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-3 rounded-xl flex items-center gap-3 shadow-md"
-        >
-          <div className="flex-1 text-sm truncate">
-            {t.title}
-          </div>
+   {/* Playlist */}
+<div className="w-full max-w-md flex flex-col gap-3">
+  {playlist.map((t, i) => (
+    <div
+      key={i}
+      className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center justify-between shadow-md"
+    >
+      <div className="flex flex-col flex-1">
+        <span className="text-sm font-semibold truncate">
+          {t.title}
+        </span>
+        <span className="text-xs text-zinc-400">
+          Tap to play
+        </span>
+      </div>
 
-          <button
-            onClick={() => play(t)}
-            className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm"
-          >
-            ▶
-          </button>
-        </div>
-      ))}
+      <button
+        onClick={() => play(t)}
+        className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm"
+      >
+        ▶
+      </button>
     </div>
+  ))}
+</div>
+    {playlist.length === 0 && (
+  <div className="text-zinc-400 mt-6">
+    No songs yet. Generate or upload 🎧
+  </div>
+)}
 
     {/* Install */}
     {deferredPrompt && (
