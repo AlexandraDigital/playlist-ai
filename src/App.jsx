@@ -1216,7 +1216,7 @@ export default function App() {
                                                                                                   artist: spotify?.fullArtist || track.artist,
                                                                                                           ytStatus: yt?.videoId ? "found" : "notfound",
                                                                                                                   hasSpotify: !!spotify,
-                                                                                                                        },
+                                                                                                                        }) ,
                                                                                                                             ]);
                                                                                                                               } else {
                                                                                                                                   // No search results
