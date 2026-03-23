@@ -1895,69 +1895,97 @@ export default function App() {
           </div>
         )}
       </div>
-      {/* ── AI DRAWER ─────────────────────────────────────────── */}
-<div className={`ai-drawer${showAI ? " open" : ""}`}>
-  <div className="ai-header">
-    <span>AI Playlist Assistant</span>
-    <button className="ai-close" onClick={() => setShowAI(false)}>×</button>
-  </div>
-  <div className="ai-messages">
-    {aiMsgs.length === 0 && <div className="ai-placeholder">Ask AI for playlist ideas...</div>}
-    {aiMsgs.map((m, i) => (
-      <div key={i} className={`ai-msg ${m.from}`}>
-        {m.text}
+{/* AI DRAWER */}
+{showAI && (
+  <div className="ai-drawer">
+    {/* AI Messages */}
+    {(aiMsgs || []).length > 0 ? (
+      <div className="ai-msgs">
+        {(aiMsgs || []).map((m, i) => (
+          <div key={i} className={`ai-msg ${m?.role || ""}`}>
+            {m?.role === "user" ? `you: ${m.content || ""}` : m?.content || ""}
+          </div>
+        ))}
       </div>
-    ))}
+    ) : (
+      <div className="chip-row">
+        {(tr?.chips || []).map((c) => (
+          <button key={c} className="chip" onClick={() => sendAI?.(c)}>
+            {c}
+          </button>
+        ))}
+      </div>
+    )}
+
+    {/* AI Suggestions */}
+    {(aiSuggestions || []).length > 0 && (
+      <>
+        <div className="suggest-list">
+          {(aiSuggestions || []).map((s, i) => (
+            <div
+              key={i}
+              className={`suggest-row${aiSelected?.has(i) ? " selected" : ""}`}
+              onClick={() =>
+                setAiSelected?.((prev) => {
+                  const next = new Set(prev || []);
+                  next.has(i) ? next.delete(i) : next.add(i);
+                  return next;
+                })
+              }
+            >
+              <div className="suggest-check">{aiSelected?.has(i) ? "✓" : ""}</div>
+              <div className="suggest-song">
+                <div className="suggest-title">{s?.title || ""}</div>
+                <div className="suggest-artist">{s?.artist || ""}</div>
+              </div>
+              {s?.duration && <div className="suggest-dur">{s.duration}</div>}
+            </div>
+          ))}
+        </div>
+
+        <div className="suggest-actions">
+          <button
+            className="suggest-add-btn"
+            disabled={!aiSelected || aiSelected.size === 0}
+            onClick={() => {
+              const toAdd = (aiSuggestions || []).filter((_, i) => aiSelected?.has(i));
+              toAdd.forEach((s) => addTrack?.(s));
+              setAiSuggestions?.([]);
+              setAiSelected?.(new Set());
+              setTab?.("playlist");
+            }}
+          >
+            {tr?.addSongs ? tr.addSongs(aiSelected?.size || 0) : "Add"}
+          </button>
+          <button
+            className="suggest-all-btn"
+            onClick={() => setAiSelected?.(new Set((aiSuggestions || []).map((_, i) => i)))}
+          >
+            {tr?.all || "All"}
+          </button>
+          <button className="suggest-all-btn" onClick={() => setAiSelected?.(new Set())}>
+            {tr?.none || "None"}
+          </button>
+        </div>
+      </>
+    )}
+
+    {/* AI Input */}
+    <div className="ai-input-row">
+      <input
+        className="ai-input"
+        placeholder={tr?.aiPlaceholder || "Type a prompt..."}
+        value={aiInput || ""}
+        onChange={(e) => setAiInput?.(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && sendAI?.()}
+        autoFocus
+      />
+      <button className="ai-send" onClick={() => sendAI?.()} disabled={aiLoading}>
+        {aiLoading ? "…" : "→"}
+      </button>
+    </div>
   </div>
-  <div className="ai-input-row">
-    <input
-      type="text"
-      value={aiInput}
-      onChange={(e) => setAiInput(e.target.value)}
-      onKeyDown={async (e) => {
-        if (e.key === "Enter" && aiInput.trim()) {
-          const msg = aiInput;
-          setAiMsgs((msgs) => [...msgs, { from: "user", text: msg }]);
-          setAiInput("");
-          setAiLoading(true);
-          try {
-            const reply = await aiChat("You are a playlist assistant AI. Give helpful song suggestions.", [
-              { role: "user", content: msg },
-            ]);
-            setAiMsgs((msgs) => [...msgs, { from: "ai", text: reply }]);
-          } catch (err) {
-            setAiMsgs((msgs) => [...msgs, { from: "ai", text: "⚠️ Error: Could not get AI response." }]);
-          }
-          setAiLoading(false);
-        }
-      }}
-      placeholder="Type a song or mood..."
-      disabled={aiLoading}
-    />
-    <button
-      className="ai-send"
-      onClick={async () => {
-        if (!aiInput.trim()) return;
-        const msg = aiInput;
-        setAiMsgs((msgs) => [...msgs, { from: "user", text: msg }]);
-        setAiInput("");
-        setAiLoading(true);
-        try {
-          const reply = await aiChat("You are a playlist assistant AI. Give helpful song suggestions.", [
-            { role: "user", content: msg },
-          ]);
-          setAiMsgs((msgs) => [...msgs, { from: "ai", text: reply }]);
-        } catch {
-          setAiMsgs((msgs) => [...msgs, { from: "ai", text: "⚠️ Error: Could not get AI response." }]);
-        }
-        setAiLoading(false);
-      }}
-      disabled={aiLoading}
-    >
-      {aiLoading ? "..." : "→"}
-    </button>
-  </div>
-</div>
+)};
 
 {/* ── AI DRAWER STYLES ───────────────────────────────────── */}
 <style>{`
