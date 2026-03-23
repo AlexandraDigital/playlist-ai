@@ -7,31 +7,36 @@ export async function onRequest(context) {
     return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
   }
 
-  // Get access token
-  const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      Authorization: "Basic " + btoa(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`),
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-
-  const tokenData = await tokenRes.json();
-  const token = tokenData.access_token;
-
-  const searchRes = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`,
-    {
+  try {
+    const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization:
+          "Basic " +
+          btoa(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`),
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-    }
-  );
+      body: "grant_type=client_credentials",
+    });
 
-  const data = await searchRes.json();
+    const tokenData = await tokenRes.json();
 
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
-  });
+    const searchRes = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${tokenData.access_token}`,
+        },
+      }
+    );
+
+    const data = await searchRes.json();
+
+    return new Response(JSON.stringify(data), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+  }
 }
+  
