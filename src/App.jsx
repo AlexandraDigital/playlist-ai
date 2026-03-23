@@ -200,14 +200,32 @@ const IDB = {
   open() {
     if (this._db) return Promise.resolve(this._db);
     return new Promise((res, rej) => {
-      const r = indexedDB.open("playlist-ai", 2);
+      const r = indexedDB.open("playlist-ai", 3);
       r.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains("offline"))
           db.createObjectStore("offline", { keyPath: "videoId" });
+        if (!db.objectStoreNames.contains("appState"))
+          db.createObjectStore("appState", { keyPath: "key" });
       };
       r.onsuccess = (e) => { this._db = e.target.result; res(this._db); };
       r.onerror = (e) => rej(e.target.error);
+    });
+  },
+  async getState(key) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const req = db.transaction("appState", "readonly").objectStore("appState").get(key);
+      req.onsuccess = () => res(req.result ? req.result.value : null);
+      req.onerror = rej;
+    });
+  },
+  async setState(key, value) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const tx = db.transaction("appState", "readwrite");
+      tx.objectStore("appState").put({ key, value });
+      tx.oncomplete = res; tx.onerror = rej;
     });
   },
   async save(rec) {
@@ -225,6 +243,7 @@ const IDB = {
       const req = db.transaction("offline", "readonly").objectStore("offline").getAll();
       req.onsuccess = () => {
         const records = req.result || [];
+        records.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
         const results = records.map((rec) => {
           if (rec.audioBlob) {
             const url = URL.createObjectURL(rec.audioBlob);
@@ -433,6 +452,7 @@ const STYLES = `
 
   /* UPLOAD */
   .t-btn.upload:hover { border-color:rgba(168,85,247,.4); color:var(--purple-light); }
+  .t-btn.add-pl:hover { border-color:rgba(168,85,247,.4); color:var(--purple-light); }
 
   /* DRAG AND DROP */
   .drag-handle { color:var(--muted); cursor:grab; font-size:15px; flex-shrink:0; padding:0 4px; user-select:none; line-height:1; }
@@ -646,7 +666,9 @@ function getGenCount() {
 
 function bumpGenCount() {
   const count = getGenCount() + 1;
-  localStorage.setItem("playlist-ai-gen", JSON.stringify({ date: new Date().toDateString(), count }));
+  const data = { date: new Date().toDateString(), count };
+  localStorage.setItem("playlist-ai-gen", JSON.stringify(data));
+  IDB.setState("genCount", data);
   return count;
 }
 
@@ -673,6 +695,8 @@ export default function App() {
   const [aiSelected, setAiSelected] = useState(new Set());
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [offDragIdx, setOffDragIdx] = useState(null);
+  const [offDragOverIdx, setOffDragOverIdx] = useState(null);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -684,11 +708,12 @@ export default function App() {
   const [isPro, setIsPro] = useState(() => localStorage.getItem("playlist-ai-pro") === "true");
   const [aiGenCount, setAiGenCount] = useState(getGenCount);
 
-  const [syncCode] = useState(() => {
+  const [syncCode, setSyncCode] = useState(() => {
     let code = localStorage.getItem("playlist-ai-sync-code");
     if (!code) {
       code = Math.random().toString(36).slice(2, 8).toUpperCase();
       localStorage.setItem("playlist-ai-sync-code", code);
+      IDB.setState("syncCode", code);
     }
     return code;
   });
@@ -725,26 +750,83 @@ export default function App() {
   useEffect(() => { isProRef.current = isPro; }, [isPro]);
   useEffect(() => { tabRef.current = tab; }, [tab]);
   useEffect(() => { plNameRef.current = plName; }, [plName]);
-  useEffect(() => { localStorage.setItem("playlist-ai-lang", language); }, [language]);
+  useEffect(() => { localStorage.setItem("playlist-ai-lang", language); IDB.setState("language", language); }, [language]);
 
-  // Auto-save current playlist to localStorage whenever it changes
+  // Auto-save current playlist to localStorage and IDB whenever it changes
   useEffect(() => {
     if (playlist.length > 0) {
       const toSave = playlist.map(({ title, artist, videoId, thumbnail, duration, hasSpotify }) =>
         ({ title, artist, videoId, thumbnail, duration, hasSpotify }));
-      localStorage.setItem("playlist-ai-current", JSON.stringify({ name: plName, songs: toSave }));
+      const data = { name: plName, songs: toSave };
+      localStorage.setItem("playlist-ai-current", JSON.stringify(data));
+      IDB.setState("currentPlaylist", data);
     }
   }, [playlist, plName]);
 
-  // Restore current playlist on load
+  // Restore ALL app state from IDB on load, fallback to localStorage for migration
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("playlist-ai-current") || "null");
-      if (saved?.songs?.length) {
-        setPlaylist(saved.songs.map((s) => ({ ...s, id: Date.now() + Math.random(), ytStatus: s.videoId ? "found" : "notfound" })));
-        if (saved.name) setPlName(saved.name);
-      }
-    } catch { /* ignore */ }
+    (async () => {
+      try {
+        // Hydrate current playlist
+        let current = await IDB.getState("currentPlaylist");
+        if (!current) {
+          try { current = JSON.parse(localStorage.getItem("playlist-ai-current") || "null"); } catch {}
+          if (current) IDB.setState("currentPlaylist", current);
+        }
+        if (current?.songs?.length) {
+          setPlaylist(current.songs.map((s) => ({ ...s, id: Date.now() + Math.random(), ytStatus: s.videoId ? "found" : "notfound" })));
+          if (current.name) setPlName(current.name);
+        }
+
+        // Hydrate saved playlists
+        let sp = await IDB.getState("savedPlaylists");
+        if (!sp) {
+          try { sp = JSON.parse(localStorage.getItem("saved-playlists") || "null"); } catch {}
+          if (sp) IDB.setState("savedPlaylists", sp);
+        }
+        if (sp?.length) setSavedPlaylists(sp);
+
+        // Hydrate stats
+        let st = await IDB.getState("stats");
+        if (!st) {
+          try { st = JSON.parse(localStorage.getItem("playlist-ai-stats") || "null"); } catch {}
+          if (st) IDB.setState("stats", st);
+        }
+        if (st && typeof st === "object" && Object.keys(st).length) setStats(st);
+
+        // Hydrate pro status
+        let pro = await IDB.getState("isPro");
+        if (pro === null) {
+          pro = localStorage.getItem("playlist-ai-pro") === "true";
+          if (pro) IDB.setState("isPro", pro);
+        }
+        if (pro) setIsPro(true);
+
+        // Hydrate language
+        let lang = await IDB.getState("language");
+        if (!lang) {
+          lang = localStorage.getItem("playlist-ai-lang");
+          if (lang) IDB.setState("language", lang);
+        }
+        if (lang && TRANSLATIONS[lang]) setLanguage(lang);
+
+        // Hydrate sync code
+        let sc = await IDB.getState("syncCode");
+        if (!sc) {
+          sc = localStorage.getItem("playlist-ai-sync-code");
+          if (sc) IDB.setState("syncCode", sc);
+        }
+        if (sc) setSyncCode(sc);
+
+        // Hydrate gen count
+        let gc = await IDB.getState("genCount");
+        if (!gc) {
+          try { gc = JSON.parse(localStorage.getItem("playlist-ai-gen") || "null"); } catch {}
+          if (gc) IDB.setState("genCount", gc);
+        }
+        if (gc?.date === new Date().toDateString()) setAiGenCount(gc.count || 0);
+      } catch { /* ignore hydration errors */ }
+    })();
   }, []);
 
   useEffect(() => {
@@ -782,7 +864,9 @@ export default function App() {
       const pl = playlistRef.current;
       const toSave = pl.map(({ title, artist, videoId, thumbnail, duration, hasSpotify }) =>
         ({ title, artist, videoId, thumbnail, duration, hasSpotify }));
-      localStorage.setItem("playlist-ai-current", JSON.stringify({ name: plNameRef.current, songs: toSave }));
+      const data = { name: plNameRef.current, songs: toSave };
+      localStorage.setItem("playlist-ai-current", JSON.stringify(data));
+      IDB.setState("currentPlaylist", data);
     };
     window.addEventListener("beforeunload", saveState);
     window.addEventListener("pagehide", saveState);
@@ -840,6 +924,7 @@ export default function App() {
             const result = await res.json();
             if (result.success) {
               localStorage.setItem("playlist-ai-pro", "true");
+              IDB.setState("isPro", true);
               setIsPro(true);
             } else {
               alert("Payment could not be verified. Please contact support.");
@@ -1004,6 +1089,7 @@ export default function App() {
       const key = t.videoId || t.title;
       const updated = { ...prev, [key]: { ...(prev[key] || {}), plays: (prev[key]?.plays || 0) + 1, title: t.title, artist: t.artist } };
       localStorage.setItem("playlist-ai-stats", JSON.stringify(updated));
+      IDB.setState("stats", updated);
       return updated;
     });
 
@@ -1231,6 +1317,7 @@ export default function App() {
     const updated = [entry, ...savedPlaylists.filter((p) => p.name !== name)];
     setSavedPlaylists(updated);
     localStorage.setItem("saved-playlists", JSON.stringify(updated));
+    IDB.setState("savedPlaylists", updated);
   }, [playlist, plName, savedPlaylists]);
 
   const loadPlaylist = useCallback((pl) => {
@@ -1244,6 +1331,7 @@ export default function App() {
     const updated = savedPlaylists.filter((p) => p.id !== id);
     setSavedPlaylists(updated);
     localStorage.setItem("saved-playlists", JSON.stringify(updated));
+    IDB.setState("savedPlaylists", updated);
   }, [savedPlaylists]);
 
   const createNewPlaylist = useCallback(() => {
@@ -1278,6 +1366,7 @@ export default function App() {
       const merged = [...remote, ...savedPlaylists.filter((p) => !remote.find((r) => r.name === p.name))];
       setSavedPlaylists(merged);
       localStorage.setItem("saved-playlists", JSON.stringify(merged));
+      IDB.setState("savedPlaylists", merged);
       setSyncStatus({ msg: `✓ Loaded ${remote.length} playlist${remote.length !== 1 ? "s" : ""}!`, type: "ok" });
       setImportCode("");
     } catch (e) {
@@ -1305,28 +1394,50 @@ export default function App() {
     setDragOverIdx(null);
   }, [dragIdx, currentIdx]);
 
+  const handleOfflineDrop = useCallback((toIdx) => {
+    if (offDragIdx === null || offDragIdx === toIdx) return;
+    const newTracks = [...offlineTracks];
+    const [removed] = newTracks.splice(offDragIdx, 1);
+    newTracks.splice(toIdx, 0, removed);
+    setOfflineTracks(newTracks);
+    // Save the new order to IDB
+    (async () => {
+      const db = await IDB.open();
+      const tx = db.transaction("offline", "readwrite");
+      const store = tx.objectStore("offline");
+      newTracks.forEach((t, i) => {
+        store.put({ ...t, order: i });
+      });
+    })();
+    if (currentIdx !== null && tab === "offline") {
+      if (currentIdx === offDragIdx) setCurrentIdx(toIdx);
+      else if (offDragIdx < currentIdx && toIdx >= currentIdx) setCurrentIdx(currentIdx - 1);
+      else if (offDragIdx > currentIdx && toIdx <= currentIdx) setCurrentIdx(currentIdx + 1);
+    }
+    setOffDragIdx(null);
+    setOffDragOverIdx(null);
+  }, [offDragIdx, currentIdx, tab, offlineTracks]);
+
   /* ── Render track row ───────────────────────────────────────── */
   const renderRow = (t, idx, isOffline = false) => {
     const isPlaying = currentIdx === idx && playing && tab === (isOffline ? "offline" : "playlist");
     const dl = dlStatus[t.videoId];
     const isOfflineSaved = !!offlineTracks.find((o) => o.videoId === t.videoId);
-    const isDragging = !isOffline && dragIdx === idx;
-    const isDragOver = !isOffline && dragOverIdx === idx && dragIdx !== idx;
+    const isDragging = isOffline ? offDragIdx === idx : dragIdx === idx;
+    const isDragOver = isOffline ? (offDragOverIdx === idx && offDragIdx !== idx) : (dragOverIdx === idx && dragIdx !== idx);
 
     return (
       <div
         key={t.id || t.videoId}
         className={`track-row${isPlaying ? " playing" : ""}${isDragging ? " dragging" : ""}${isDragOver ? " drag-over" : ""}`}
-        draggable={!isOffline}
-        onDragStart={!isOffline ? (e) => { setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; } : undefined}
-        onDragOver={!isOffline ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverIdx(idx); } : undefined}
-        onDrop={!isOffline ? (e) => { e.preventDefault(); handleDrop(idx); } : undefined}
-        onDragEnd={!isOffline ? () => { setDragIdx(null); setDragOverIdx(null); } : undefined}
+        draggable={true}
+        onDragStart={(e) => { isOffline ? setOffDragIdx(idx) : setDragIdx(idx); e.dataTransfer.effectAllowed = "move"; }}
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; isOffline ? setOffDragOverIdx(idx) : setDragOverIdx(idx); }}
+        onDrop={(e) => { e.preventDefault(); isOffline ? handleOfflineDrop(idx) : handleDrop(idx); }}
+        onDragEnd={() => { isOffline ? (setOffDragIdx(null), setOffDragOverIdx(null)) : (setDragIdx(null), setDragOverIdx(null)); }}
         onClick={() => { setTab(isOffline ? "offline" : "playlist"); playTrack(idx); }}
       >
-        {!isOffline && (
-          <div className="drag-handle" onMouseDown={(e) => e.stopPropagation()} title="Drag to reorder">⠿</div>
-        )}
+        <div className="drag-handle" onMouseDown={(e) => e.stopPropagation()} title="Drag to reorder">⠿</div>
         <div className="track-num">{isPlaying ? "▶" : idx + 1}</div>
 
         {t.thumbnail ? (
@@ -1369,6 +1480,13 @@ export default function App() {
           {!isOffline && (
             <button className="t-btn upload" title={tr.uploadAudio}
               onClick={() => { uploadTargetRef.current = { track: t }; uploadFileRef.current?.click(); }}>⬆</button>
+          )}
+          {isOffline && (
+            <button className="t-btn add-pl" title="Add to playlist" onClick={() => {
+              if (!playlistRef.current.find((x) => x.title === t.title && x.artist === t.artist)) {
+                addTrack({ title: t.title, artist: t.artist, duration: t.duration });
+              }
+            }}>🎵</button>
           )}
           <button className="t-btn remove" title={tr.remove} onClick={() => {
             if (isOffline) {
