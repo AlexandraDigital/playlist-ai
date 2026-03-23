@@ -33,7 +33,7 @@ export async function onRequest(context) {
   }
 
   try {
-    // Spotify Client Credentials flow (no user login needed)
+    // Spotify Client Credentials flow — 8 s timeout to prevent worker from hanging
     const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
       method: "POST",
       headers: {
@@ -41,6 +41,7 @@ export async function onRequest(context) {
         Authorization: "Basic " + btoa(`${clientId}:${clientSecret}`),
       },
       body: "grant_type=client_credentials",
+      signal: AbortSignal.timeout(8000),
     });
 
     const tokenData = await tokenRes.json();
@@ -53,7 +54,10 @@ export async function onRequest(context) {
 
     const searchRes = await fetch(
       `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=${type}&limit=3&market=US`,
-      { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
+      {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        signal: AbortSignal.timeout(8000),
+      }
     );
 
     const data = await searchRes.json();

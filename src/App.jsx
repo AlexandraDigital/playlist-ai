@@ -567,7 +567,7 @@ async function ytSearch(title, artist) {
   ];
   for (const q of queries) {
     try {
-      const r = await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`);
+      const r = await fetch(`/api/youtube-search?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(15000) });
       const d = await r.json();
       const item = d?.items?.[0];
       if (item?.id?.videoId) {
@@ -586,7 +586,7 @@ async function ytSearch(title, artist) {
 async function spotifySearch(title, artist) {
   try {
     const q = artist ? `${title} ${artist}` : title;
-    const r = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}&type=track`);
+    const r = await fetch(`/api/spotify-search?q=${encodeURIComponent(q)}&type=track`, { signal: AbortSignal.timeout(15000) });
     if (!r.ok) return null;
     const d = await r.json();
     const track = d?.tracks?.items?.[0];

@@ -58,7 +58,7 @@ export async function onRequestGet(context) {
 
   try {
     const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=3&q=${encodeURIComponent(q)}&key=${apiKey}`;
-    const response = await fetch(ytUrl);
+    const response = await fetch(ytUrl, { signal: AbortSignal.timeout(8000) });
     const data = await response.json();
     return new Response(JSON.stringify(data), {
       status: 200,
