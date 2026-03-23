@@ -1550,6 +1550,9 @@ export default function App() {
           <div className="header-top">
             <div className="logo">Playlist AI</div>
             <div className="header-badges">
+              <button className="icon-btn" onClick={() => { setShowAI((v) => !v); setShowAdd(false); }}>
+  🤖 AI
+</button>
               {!isStandalone && (
                 <button className="install-btn" onClick={async () => {
                   if (installPrompt) {
@@ -1891,6 +1894,139 @@ export default function App() {
           </div>
         )}
       </div>
+      {/* ── AI DRAWER ─────────────────────────────────────────── */}
+<div className={`ai-drawer${showAI ? " open" : ""}`}>
+  <div className="ai-header">
+    <span>AI Playlist Assistant</span>
+    <button className="ai-close" onClick={() => setShowAI(false)}>×</button>
+  </div>
+  <div className="ai-messages">
+    {aiMsgs.length === 0 && <div className="ai-placeholder">Ask AI for playlist ideas...</div>}
+    {aiMsgs.map((m, i) => (
+      <div key={i} className={`ai-msg ${m.from}`}>
+        {m.text}
+      </div>
+    ))}
+  </div>
+  <div className="ai-input-row">
+    <input
+      type="text"
+      value={aiInput}
+      onChange={(e) => setAiInput(e.target.value)}
+      onKeyDown={async (e) => {
+        if (e.key === "Enter" && aiInput.trim()) {
+          const msg = aiInput;
+          setAiMsgs((msgs) => [...msgs, { from: "user", text: msg }]);
+          setAiInput("");
+          setAiLoading(true);
+          try {
+            const reply = await aiChat("You are a playlist assistant AI. Give helpful song suggestions.", [
+              { role: "user", content: msg },
+            ]);
+            setAiMsgs((msgs) => [...msgs, { from: "ai", text: reply }]);
+          } catch (err) {
+            setAiMsgs((msgs) => [...msgs, { from: "ai", text: "⚠️ Error: Could not get AI response." }]);
+          }
+          setAiLoading(false);
+        }
+      }}
+      placeholder="Type a song or mood..."
+      disabled={aiLoading}
+    />
+    <button
+      className="ai-send"
+      onClick={async () => {
+        if (!aiInput.trim()) return;
+        const msg = aiInput;
+        setAiMsgs((msgs) => [...msgs, { from: "user", text: msg }]);
+        setAiInput("");
+        setAiLoading(true);
+        try {
+          const reply = await aiChat("You are a playlist assistant AI. Give helpful song suggestions.", [
+            { role: "user", content: msg },
+          ]);
+          setAiMsgs((msgs) => [...msgs, { from: "ai", text: reply }]);
+        } catch {
+          setAiMsgs((msgs) => [...msgs, { from: "ai", text: "⚠️ Error: Could not get AI response." }]);
+        }
+        setAiLoading(false);
+      }}
+      disabled={aiLoading}
+    >
+      {aiLoading ? "..." : "→"}
+    </button>
+  </div>
+</div>
+
+{/* ── AI DRAWER STYLES ───────────────────────────────────── */}
+<style>{`
+.ai-drawer {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100%);
+  width: 90%;
+  max-width: 400px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.25);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9999;
+}
+.ai-drawer.open {
+  transform: translateX(-50%) translateY(0%);
+  opacity: 1;
+  pointer-events: auto;
+}
+.ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+.ai-close {
+  border: none;
+  background: none;
+  font-size: 18px;
+  cursor: pointer;
+}
+.ai-messages {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-msg.user { text-align: right; color: black; }
+.ai-msg.ai { text-align: left; color: gray; }
+.ai-placeholder { text-align: center; color: #aaa; }
+.ai-input-row {
+  display: flex;
+  gap: 4px;
+}
+.ai-input-row input {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+.ai-send {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #4a90e2;
+  color: white;
+  cursor: pointer;
+}
+.ai-send:disabled { background: #aaa; cursor: not-allowed; }
+`}</style>
 {/* PRO MODAL */}
 {showPro && (
   <div className="pro-overlay" onClick={() => setShowPro(false)}>
