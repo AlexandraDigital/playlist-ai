@@ -1192,63 +1192,56 @@ export default function App() {
   useEffect(() => { togglePlayRef.current = togglePlay; }, [togglePlay]);
 
   /* ── Add track ──────────────────────────────────────────────── */
-   addTrack = useCallback(async (track) => {
-      if (playlistRef.current.find((t) => t.title === track.title && t.artist === track.artist)) return;
-        const id = Date.now() + Math.random();
+   const addTrack = useCallback(async (track) => {
+  if (playlistRef.current.find((t) => t.title === track.title && t.artist === track.artist)) return;
 
-          // Call search functions
-           async function searchAndUpdatePlaylist(track, id) {
-  // Add a placeholder to playlist indicating search is in progress
+  const id = Date.now() + Math.random();
+
+  // Show loading state first
   setPlaylist((p) => [
     ...p,
     { ...track, id, videoId: null, thumbnail: null, ytStatus: "searching" }
   ]);
 
-  // Perform parallel searches
-  const [yt, spotify] = await Promise.all([
-    ytSearch(track.title, track.artist),
-    spotifySearch(track.title, track.artist),
-  ]);
-           }
-  // Process search results here...
-  if (yt?.videoId || spotify?.spotifyId) {
-    setPlaylist((p) => [
-      ...p,
-      {
-        ...track,
-        id,
-        videoId: yt?.videoId || null,
-        thumbnail: spotify?.thumbnail || yt?.thumbnail || null,
-        duration: spotify?.duration || track.duration || null,
-        title: spotify?.fullTitle || track.title,
-        artist: spotify?.fullArtist || track.artist,
-        ytStatus: yt?.videoId ? "found" : "notfound",
-        hasSpotify: !!spotify,
-      },
+  try {
+    const [yt, spotify] = await Promise.all([
+      ytSearch(track.title, track.artist),
+      spotifySearch(track.title, track.artist),
     ]);
-  } else {
-    // No results found
-    setPlaylist((p) => [
-      ...p,
-      {
-        ...track,
-        id,
-        videoId: null,
-        thumbnail: null,
-        duration: null,
-        title: track.title,
-        artist: track.artist,
-        ytStatus: "notfound",
-        hasSpotify: false,
-      },
-    ]);
-  }
-}
 
-    , (yt?.videoId && blobUrlsRef.current[yt.videoId]),
-      setDlStatus((s) => ({ ...s, [yt.videoId]: "done" })))
-    }
-  []
+    setPlaylist((p) =>
+      p.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              videoId: yt?.videoId || null,
+              thumbnail: spotify?.thumbnail || yt?.thumbnail || null,
+              duration: spotify?.duration || track.duration || null,
+              title: spotify?.fullTitle || track.title,
+              artist: spotify?.fullArtist || track.artist,
+              ytStatus: yt?.videoId ? "found" : "notfound",
+              hasSpotify: !!spotify,
+            }
+          : t
+      )
+    );
+  } catch (err) {
+    console.error("Search failed:", err);
+
+    setPlaylist((p) =>
+      p.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              ytStatus: "notfound",
+              hasSpotify: false,
+            }
+          : t
+      )
+    );
+  }
+}, []);
+}
 
   /* ── AI generate ────────────────────────────────────────────── */
   const sendAI = useCallback(async (userMsg) => {
