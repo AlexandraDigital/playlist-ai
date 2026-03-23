@@ -1,15 +1,74 @@
-const [deferredPrompt, setDeferredPrompt] = useState(null);
+
 import { useState, useRef, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 export default function App() {
+  // ✅ ALL STATE HERE
   const [query, setQuery] = useState("");
   const [playlist, setPlaylist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isPro, setIsPro] = useState(localStorage.getItem("pro") === "true");
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
   const audioRef = useRef(null);
+
+  // ✅ useEffect
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener("beforeinstallprompt", handler);
+    return () =>
+      window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  // ✅ function
+  const installApp = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+  };
+
+  const generateAI = () => {};
+
+  // ✅ UI MUST BE INSIDE RETURN
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col items-center p-4">
+      
+      <h1 className="text-3xl font-bold mb-6">🎧 Playlist AI</h1>
+
+      <div className="w-full max-w-md flex gap-2 mb-4">
+        <input
+          className="bg-zinc-900 text-white p-2 rounded w-full"
+          placeholder="Type a vibe..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        <button
+          onClick={generateAI}
+          className="bg-purple-600 px-3 rounded"
+        >
+          {loading ? "..." : "AI"}
+        </button>
+      </div>
+
+      {/* Install Button */}
+      {deferredPrompt && (
+        <button
+          onClick={installApp}
+          className="mt-4 bg-blue-600 px-4 py-2 rounded"
+        >
+          Install App 📱
+        </button>
+      )}
+
+    </div>
+  );
+}
 
   // -------------------------
   // IndexedDB
