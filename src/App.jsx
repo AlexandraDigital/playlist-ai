@@ -1,4 +1,16 @@
 import { useState, useRef, useEffect } from "react";
+const openDB = () => {
+  return new Promise((resolve) => {
+    const request = indexedDB.open("musicDB", 1);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      db.createObjectStore("songs", { keyPath: "id" });
+    };
+
+    request.onsuccess = () => resolve(request.result);
+  });
+};
 
 export default function App() {
   const [query, setQuery] = useState("");
@@ -20,6 +32,27 @@ export default function App() {
     return () =>
       window.removeEventListener("beforeinstallprompt", handler);
   }, []);
+  
+  useEffect(() => {
+  const loadSongs = async () => {
+    const db = await openDB();
+    const tx = db.transaction("songs", "readonly");
+    const store = tx.objectStore("songs");
+
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      const tracks = request.result.map((t) => ({
+        ...t,
+        url: URL.createObjectURL(t.file),
+      }));
+
+      setPlaylist(tracks);
+    };
+  };
+
+  loadSongs();
+}, []);
 
   const installApp = async () => {
     if (!deferredPrompt) return;
@@ -106,18 +139,26 @@ const generateAI = async () => {
 };
 
 
-  const handleUpload = (e) => {
+const handleUpload = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
   const track = {
+    id: "local-" + Date.now(),
     title: file.name,
-    videoId: "local-" + Date.now(),
-    url: URL.createObjectURL(file),
+    file,
   };
 
-  setPlaylist((prev) => [track, ...prev]);
-};  // ✅ THIS WAS MISSING
+  const db = await openDB();
+  const tx = db.transaction("songs", "readwrite");
+  const store = tx.objectStore("songs");
+  store.put(track);
+
+  setPlaylist((prev) => [
+    ...prev,
+    { ...track, url: URL.createObjectURL(file) },
+  ]);
+};
 
 return (
   <div className="min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white flex flex-col items-center p-6">
