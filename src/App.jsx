@@ -99,7 +99,7 @@ const generateAI = async () => {
 
   try {
     // 1. Get AI songs
-    const res = await fetch("/ai", {
+    const res = await fetch("/api/ai/", {
       method: "POST",
       body: JSON.stringify({ query }),
     });
