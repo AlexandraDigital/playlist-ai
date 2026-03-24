@@ -28,9 +28,15 @@ export default function App() {
     setDeferredPrompt(null);
   };
 
-  const play = (track) => {
-    if (audioRef.current) audioRef.current.pause();
+ const play = (track) => {
+  // Stop previous
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current = null;
+  }
 
+  // 🎵 Uploaded file
+  if (track.url) {
     audioRef.current = new Audio(track.url);
 
     audioRef.current.onended = () => {
@@ -45,8 +51,15 @@ export default function App() {
     };
 
     audioRef.current.play();
-  };
-
+  } 
+  // 🌐 AI / YouTube song
+  else if (track.videoId) {
+    window.open(
+      `https://www.youtube.com/watch?v=${track.videoId}`,
+      "_blank"
+    );
+  }
+};
 
 const generateAI = async () => {
   setLoading(true);
