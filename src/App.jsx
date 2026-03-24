@@ -14,7 +14,9 @@ const openDB = () => {
 
 export default function App() {
   const [query, setQuery] = useState("");
-  const [playlist, setPlaylist] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const currentPlaylist = playlists[currentIndex]?.songs || [];
   const [loading, setLoading] = useState(false);
   const [isPro, setIsPro] = useState(localStorage.getItem("pro") === "true");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -223,7 +225,7 @@ return (
 
     {/* Playlist */}
     <div className="w-full max-w-md flex flex-col gap-3">
-      {playlist.map((t, i) => (
+      {currentPlaylist.map((t, i) => (
         <div
           key={i}
           className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center gap-3 shadow-md"
