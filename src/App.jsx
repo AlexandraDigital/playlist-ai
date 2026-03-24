@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 
-// IndexedDB
+/* ---------- IndexedDB ---------- */
 const openDB = () =>
   new Promise((resolve) => {
     const req = indexedDB.open("musicDB", 1);
@@ -14,15 +14,17 @@ const openDB = () =>
 
 export default function App() {
   const [query, setQuery] = useState("");
+  const [playlistName, setPlaylistName] = useState("");
   const [playlist, setPlaylist] = useState([]);
   const [playlists, setPlaylists] = useState([]);
-  const [current, setCurrent] = useState(null);
   const [favorites, setFavorites] = useState([]);
+  const [current, setCurrent] = useState(null);
   const [progress, setProgress] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const audioRef = useRef(null);
 
-  /* ---------- LOAD PLAYLISTS ---------- */
+  /* ---------- Load playlists ---------- */
   useEffect(() => {
     loadPlaylists();
   }, []);
@@ -52,7 +54,7 @@ export default function App() {
     loadPlaylists();
   };
 
-  /* ---------- PLAYER ---------- */
+  /* ---------- Player ---------- */
   const play = (track, index) => {
     if (!track.url) return alert("No audio source");
 
@@ -74,18 +76,17 @@ export default function App() {
 
   const next = () => {
     if (playlist.length === 0) return;
-    const nextIndex = (current + 1) % playlist.length;
-    play(playlist[nextIndex], nextIndex);
+    const i = (current + 1) % playlist.length;
+    play(playlist[i], i);
   };
 
   const prev = () => {
     if (playlist.length === 0) return;
-    const prevIndex =
-      (current - 1 + playlist.length) % playlist.length;
-    play(playlist[prevIndex], prevIndex);
+    const i = (current - 1 + playlist.length) % playlist.length;
+    play(playlist[i], i);
   };
 
-  /* ---------- FAVORITES ---------- */
+  /* ---------- Favorites ---------- */
   const toggleFavorite = (track) => {
     setFavorites((prev) =>
       prev.find((t) => t.id === track.id)
@@ -94,7 +95,7 @@ export default function App() {
     );
   };
 
-  /* ---------- UPLOAD ---------- */
+  /* ---------- Upload ---------- */
   const handleUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -108,7 +109,7 @@ export default function App() {
     setPlaylist((prev) => [track, ...prev]);
   };
 
-  /* ---------- YOUTUBE SEARCH ---------- */
+  /* ---------- YouTube Search ---------- */
   const searchSong = async (q) => {
     try {
       const r = await fetch(`/search?q=${encodeURIComponent(q)}`);
@@ -129,12 +130,15 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
+      alert("Search failed");
     }
   };
 
-  /* ---------- AI GENERATE ---------- */
+  /* ---------- AI ---------- */
   const generateAI = async () => {
     if (!query.trim()) return;
+
+    setLoading(true);
 
     try {
       const res = await fetch("/ai", {
@@ -146,35 +150,48 @@ export default function App() {
       });
 
       const data = await res.json();
-      const text = data.choices?.[0]?.message?.content || "";
 
+      const text = data?.choices?.[0]?.message?.content || "";
       const songs = text.split("\n").filter(Boolean);
 
       let results = [];
 
       for (let song of songs.slice(0, 8)) {
-        const r = await fetch(`/search?q=${encodeURIComponent(song)}`);
-        const d = await r.json();
+        try {
+          const r = await fetch(`/search?q=${encodeURIComponent(song)}`);
+          const d = await r.json();
 
-        if (d.items && d.items.length > 0) {
-          const vid = d.items[0];
+          if (d.items && d.items.length > 0) {
+            const vid = d.items[0];
 
-          results.push({
-            id: vid.id.videoId,
-            title: vid.snippet.title,
-            thumbnail: vid.snippet.thumbnails.medium.url,
-            videoId: vid.id.videoId,
-            url: `https://www.youtube.com/watch?v=${vid.id.videoId}`,
-          });
-        }
+            results.push({
+              id: vid.id.videoId,
+              title: vid.snippet.title,
+              thumbnail: vid.snippet.thumbnails.medium.url,
+              videoId: vid.id.videoId,
+              url: `https://www.youtube.com/watch?v=${vid.id.videoId}`,
+            });
+          }
+        } catch {}
+      }
+
+      if (results.length === 0) {
+        alert("AI returned no songs");
+        return;
       }
 
       setPlaylist(results);
-      savePlaylist(query, results);
+
+      savePlaylist(
+        playlistName || query || "My Playlist",
+        results
+      );
     } catch (e) {
       console.error(e);
       alert("AI failed");
     }
+
+    setLoading(false);
   };
 
   return (
@@ -205,14 +222,22 @@ export default function App() {
           className={`px-4 rounded-xl ${
             query.trim()
               ? "bg-purple-600 hover:bg-purple-700"
-              : "bg-zinc-600 cursor-not-allowed"
+              : "bg-zinc-600"
           }`}
         >
           AI
         </button>
       </div>
 
-      {/* SEARCH SONG */}
+      {/* PLAYLIST NAME */}
+      <input
+        value={playlistName}
+        onChange={(e) => setPlaylistName(e.target.value)}
+        placeholder="Playlist name..."
+        className="w-full max-w-md p-3 rounded-xl bg-zinc-800 mb-3"
+      />
+
+      {/* SEARCH */}
       <input
         placeholder="Search & add song..."
         onKeyDown={(e) => {
@@ -234,6 +259,10 @@ export default function App() {
           className="hidden"
         />
       </label>
+
+      {loading && (
+        <p className="text-purple-400 mb-4">Loading AI...</p>
+      )}
 
       {/* PLAYER */}
       {current !== null && (
@@ -263,7 +292,7 @@ export default function App() {
         {playlist.map((t, i) => (
           <div
             key={t.id}
-            className="bg-zinc-900 p-4 rounded-xl flex items-center gap-3 justify-between"
+            className="bg-zinc-900 p-4 rounded-xl flex items-center justify-between"
           >
             <div className="flex items-center gap-3 flex-1">
               {t.thumbnail && (
@@ -275,7 +304,9 @@ export default function App() {
             <div className="flex gap-2">
               <button onClick={() => play(t, i)}>▶</button>
               <button onClick={() => toggleFavorite(t)}>
-                {favorites.find((f) => f.id === t.id) ? "❤️" : "🤍"}
+                {favorites.find((f) => f.id === t.id)
+                  ? "❤️"
+                  : "🤍"}
               </button>
             </div>
           </div>
@@ -284,13 +315,15 @@ export default function App() {
 
       {/* SAVED PLAYLISTS */}
       <div className="mt-10 w-full max-w-md">
-        <h2 className="text-purple-300 mb-2">Your Playlists</h2>
+        <h2 className="text-purple-300 mb-2">
+          Your Playlists
+        </h2>
 
         {playlists.map((p) => (
           <div
             key={p.id}
-            className="bg-zinc-800 p-3 rounded mb-2 cursor-pointer"
             onClick={() => setPlaylist(p.songs)}
+            className="bg-zinc-800 p-3 rounded mb-2 cursor-pointer"
           >
             {p.name}
           </div>
