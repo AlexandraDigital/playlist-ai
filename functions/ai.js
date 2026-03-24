@@ -27,7 +27,7 @@ export async function onRequestPost(context) {
       }),
     });
 
-    const text = await res.text(); // 🔥 don't parse yet
+    const text = await res.text(); // ⚠️ IMPORTANT
 
     return new Response(text, {
       headers: { "Content-Type": "application/json" },
