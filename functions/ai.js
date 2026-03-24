@@ -1,4 +1,4 @@
-export async function onRequest(context) {
+export async function onRequestPost(context) {
   if (context.request.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
