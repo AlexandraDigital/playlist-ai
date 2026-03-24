@@ -12,10 +12,12 @@ export async function onRequestGet(context) {
     }
 
     const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=3&q=${encodeURIComponent(q)}&key=${context.env.YOUTUBE_API_KEY}`
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(q)}&key=${context.env.YOUTUBE_API_KEY}`
     );
 
     const data = await res.json();
+
+    console.log("YOUTUBE RESPONSE:", data);
 
     if (data.error) {
       return new Response(JSON.stringify({ error: data.error.message }), { status: 500 });
