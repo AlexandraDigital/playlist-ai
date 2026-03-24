@@ -22,7 +22,7 @@ export default function App() {
 
   const audioRef = useRef(null);
 
-  // Load saved playlists
+  /* ---------- LOAD PLAYLISTS ---------- */
   useEffect(() => {
     loadPlaylists();
   }, []);
@@ -52,7 +52,7 @@ export default function App() {
     loadPlaylists();
   };
 
-  // 🎵 PLAY
+  /* ---------- PLAYER ---------- */
   const play = (track, index) => {
     if (!track.url) return alert("No audio source");
 
@@ -85,7 +85,7 @@ export default function App() {
     play(playlist[prevIndex], prevIndex);
   };
 
-  // ❤️ FAVORITES
+  /* ---------- FAVORITES ---------- */
   const toggleFavorite = (track) => {
     setFavorites((prev) =>
       prev.find((t) => t.id === track.id)
@@ -94,7 +94,7 @@ export default function App() {
     );
   };
 
-  // 🎵 UPLOAD
+  /* ---------- UPLOAD ---------- */
   const handleUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -108,31 +108,40 @@ export default function App() {
     setPlaylist((prev) => [track, ...prev]);
   };
 
-  // 🔍 MANUAL SEARCH (YouTube)
+  /* ---------- YOUTUBE SEARCH ---------- */
   const searchSong = async (q) => {
-    const r = await fetch(`/search?q=${encodeURIComponent(q)}`);
-    const d = await r.json();
+    try {
+      const r = await fetch(`/search?q=${encodeURIComponent(q)}`);
+      const d = await r.json();
 
-    if (d.items && d.items.length > 0) {
-      const vid = d.items[0];
+      if (d.items && d.items.length > 0) {
+        const vid = d.items[0];
 
-      const track = {
-        id: vid.id.videoId,
-        title: vid.snippet.title,
-        thumbnail: vid.snippet.thumbnails.medium.url,
-        videoId: vid.id.videoId,
-        url: `https://www.youtube.com/watch?v=${vid.id.videoId}`,
-      };
+        const track = {
+          id: vid.id.videoId,
+          title: vid.snippet.title,
+          thumbnail: vid.snippet.thumbnails.medium.url,
+          videoId: vid.id.videoId,
+          url: `https://www.youtube.com/watch?v=${vid.id.videoId}`,
+        };
 
-      setPlaylist((prev) => [track, ...prev]);
+        setPlaylist((prev) => [track, ...prev]);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  // 🤖 AI GENERATE
+  /* ---------- AI GENERATE ---------- */
   const generateAI = async () => {
+    if (!query.trim()) return;
+
     try {
       const res = await fetch("/ai", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ query }),
       });
 
@@ -161,7 +170,7 @@ export default function App() {
       }
 
       setPlaylist(results);
-      savePlaylist(query || "My Playlist", results);
+      savePlaylist(query, results);
     } catch (e) {
       console.error(e);
       alert("AI failed");
@@ -181,12 +190,23 @@ export default function App() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && query.trim()) {
+              generateAI();
+            }
+          }}
           placeholder="Type a vibe..."
           className="flex-1 p-3 rounded-xl bg-zinc-800"
         />
+
         <button
           onClick={generateAI}
-          className="bg-purple-600 px-4 rounded-xl"
+          disabled={!query.trim()}
+          className={`px-4 rounded-xl ${
+            query.trim()
+              ? "bg-purple-600 hover:bg-purple-700"
+              : "bg-zinc-600 cursor-not-allowed"
+          }`}
         >
           AI
         </button>
@@ -196,7 +216,7 @@ export default function App() {
       <input
         placeholder="Search & add song..."
         onKeyDown={(e) => {
-          if (e.key === "Enter") {
+          if (e.key === "Enter" && e.target.value.trim()) {
             searchSong(e.target.value);
             e.target.value = "";
           }
@@ -247,10 +267,7 @@ export default function App() {
           >
             <div className="flex items-center gap-3 flex-1">
               {t.thumbnail && (
-                <img
-                  src={t.thumbnail}
-                  className="w-12 h-12 rounded"
-                />
+                <img src={t.thumbnail} className="w-12 h-12 rounded" />
               )}
               <span className="truncate">{t.title}</span>
             </div>
