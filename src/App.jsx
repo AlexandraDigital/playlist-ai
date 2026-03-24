@@ -1,37 +1,62 @@
 import { useState, useRef, useEffect } from "react";
 
+/* ---------- IndexedDB ---------- */
+const openDB = () =>
+  new Promise((resolve) => {
+    const req = indexedDB.open("musicDB", 1);
+
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      db.createObjectStore("playlists", { keyPath: "id" });
+    };
+
+    req.onsuccess = () => resolve(req.result);
+  });
+
+/* ---------- APP ---------- */
 export default function App() {
   const [query, setQuery] = useState("");
   const [playlists, setPlaylists] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const currentPlaylist = playlists[currentIndex]?.songs || [];
-
   const [loading, setLoading] = useState(false);
 
   const audioRef = useRef(null);
 
+  const currentPlaylist = playlists[currentIndex]?.songs || [];
+
+  /* ---------- LOAD FROM DB ---------- */
+  useEffect(() => {
+    (async () => {
+      const db = await openDB();
+      const tx = db.transaction("playlists", "readonly");
+      const store = tx.objectStore("playlists");
+
+      const req = store.getAll();
+      req.onsuccess = () => {
+        if (req.result.length) setPlaylists(req.result);
+      };
+    })();
+  }, []);
+
+  /* ---------- SAVE TO DB ---------- */
+  useEffect(() => {
+    (async () => {
+      const db = await openDB();
+      const tx = db.transaction("playlists", "readwrite");
+      const store = tx.objectStore("playlists");
+
+      playlists.forEach((p) => store.put(p));
+    })();
+  }, [playlists]);
+
+  /* ---------- PLAY ---------- */
   const play = (track) => {
     if (audioRef.current) audioRef.current.pause();
 
-    // Uploaded file
-    if (track.url) {
-      audioRef.current = new Audio(track.url);
-
-      audioRef.current.onended = () => {
-        const index = currentPlaylist.findIndex(
-          (t) => t.videoId === track.videoId
-        );
-
-        let nextIndex = index + 1;
-        if (nextIndex >= currentPlaylist.length) nextIndex = 0;
-
-        play(currentPlaylist[nextIndex]);
-      };
-
+    if (track.file) {
+      audioRef.current = new Audio(URL.createObjectURL(track.file));
       audioRef.current.play();
-    } 
-    // YouTube
-    else if (track.videoId) {
+    } else if (track.videoId) {
       window.open(
         `https://www.youtube.com/watch?v=${track.videoId}`,
         "_blank"
@@ -39,6 +64,7 @@ export default function App() {
     }
   };
 
+  /* ---------- AI ---------- */
   const generateAI = async () => {
     setLoading(true);
 
@@ -48,68 +74,54 @@ export default function App() {
         body: JSON.stringify({ query }),
       });
 
-      const raw = await res.text();
-      let data = JSON.parse(raw);
-
+      const data = await res.json();
       const text = data.choices[0].message.content;
 
       const songs = text
         .split("\n")
-        .map(s => s.replace(/^\d+[\.\-\)]?\s*/, "").trim())
-        .filter(s => s.length > 2)
+        .map((s) => s.replace(/^\d+[\.\-\)]?\s*/, "").trim())
+        .filter((s) => s.length > 2)
         .slice(0, 10);
 
       const results = [];
 
       for (let song of songs) {
-        try {
-          const r = await fetch(`/api/search?q=${encodeURIComponent(song)}`);
-          const d = await r.json();
+        const r = await fetch(`/api/search?q=${encodeURIComponent(song)}`);
+        const d = await r.json();
 
-          if (d && d.videoId) {
-            results.push({
-              title: d.title,
-              videoId: d.videoId,
-              thumbnail: d.thumbnail,
-            });
-          }
-        } catch {}
+        if (d && d.videoId) {
+          results.push({
+            title: d.title,
+            videoId: d.videoId,
+            thumbnail: d.thumbnail,
+          });
+        }
       }
 
-      if (results.length === 0) {
-        results.push({
-          title: "No songs found",
-          videoId: "test",
-        });
-      }
+      const newPlaylist = {
+        id: Date.now(),
+        name: query || "New Playlist",
+        songs: results,
+      };
 
-      // ✅ MULTI PLAYLIST
-      setPlaylists((prev) => [
-        {
-          name: query || "New Playlist",
-          songs: results,
-        },
-        ...prev,
-      ]);
-
+      setPlaylists((prev) => [newPlaylist, ...prev]);
       setCurrentIndex(0);
-
     } catch (e) {
-      console.error(e);
       alert("AI failed");
     }
 
     setLoading(false);
   };
 
+  /* ---------- UPLOAD ---------- */
   const handleUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const track = {
+      id: Date.now(),
       title: file.name,
-      videoId: "local-" + Date.now(),
-      url: URL.createObjectURL(file),
+      file, // ✅ stored in IndexedDB
     };
 
     setPlaylists((prev) => {
@@ -118,6 +130,7 @@ export default function App() {
       if (!updated[currentIndex]) {
         return [
           {
+            id: Date.now(),
             name: "My Music",
             songs: [track],
           },
@@ -129,93 +142,94 @@ export default function App() {
     });
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white flex flex-col items-center p-6">
-      
-      <h1 className="text-4xl font-bold mb-8 text-purple-400">
-        🎧 Playlist AI
-      </h1>
+  /* ---------- RENAME ---------- */
+  const renamePlaylist = () => {
+    const name = prompt("New playlist name:");
+    if (!name) return;
 
-      {/* Input */}
-      <div className="w-full max-w-md flex gap-2 mb-6">
+    setPlaylists((prev) => {
+      const updated = [...prev];
+      updated[currentIndex].name = name;
+      return updated;
+    });
+  };
+
+  /* ---------- INSTALL ---------- */
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener("beforeinstallprompt", handler);
+    return () =>
+      window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const installApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+  };
+
+  return (
+    <div className="min-h-screen bg-black text-white flex flex-col items-center p-6">
+
+      <h1 className="text-3xl mb-6">🎧 Playlist AI</h1>
+
+      {/* INPUT */}
+      <div className="flex gap-2 mb-4">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Type a vibe..."
-          className="flex-1 bg-zinc-900 p-3 rounded-xl"
+          className="bg-zinc-900 p-2 rounded"
         />
-
-        <button
-          onClick={generateAI}
-          className="bg-purple-600 px-4 rounded-xl"
-        >
+        <button onClick={generateAI} className="bg-purple-600 px-3 rounded">
           {loading ? "..." : "AI"}
         </button>
       </div>
 
-      {/* Upload */}
-      <label className="mb-6 cursor-pointer bg-purple-600 px-4 py-2 rounded-xl">
-        Upload Music 🎵
-        <input
-          type="file"
-          accept="audio/*"
-          onChange={handleUpload}
-          className="hidden"
-        />
-      </label>
+      {/* UPLOAD */}
+      <input type="file" onChange={handleUpload} />
 
-      {/* Playlist selector */}
-      <div className="flex gap-2 mb-4 overflow-x-auto">
+      {/* PLAYLIST SELECT */}
+      <div className="flex gap-2 mt-4">
         {playlists.map((p, i) => (
           <button
-            key={i}
+            key={p.id}
             onClick={() => setCurrentIndex(i)}
-            className={`px-3 py-1 rounded-lg text-sm ${
-              i === currentIndex
-                ? "bg-purple-600"
-                : "bg-zinc-800"
-            }`}
+            className={i === currentIndex ? "bg-purple-600 px-2" : "bg-zinc-700 px-2"}
           >
             {p.name}
           </button>
         ))}
       </div>
 
-      {/* Songs */}
-      <div className="w-full max-w-md flex flex-col gap-3">
-        {currentPlaylist.map((t, i) => (
-          <div
-            key={i}
-            className="bg-zinc-900 p-4 rounded-xl flex items-center gap-3"
-          >
-            {t.thumbnail && (
-              <img src={t.thumbnail} className="w-12 h-12 rounded" />
-            )}
+      {/* RENAME */}
+      <button onClick={renamePlaylist} className="mt-2 text-sm text-purple-400">
+        Rename ✏️
+      </button>
 
-            <div className="flex flex-col flex-1">
-              <span className="text-sm font-semibold truncate">
-                {t.title}
-              </span>
-              <span className="text-xs text-zinc-400">
-                Tap to play
-              </span>
-            </div>
-
-            <button
-              onClick={() => play(t)}
-              className="bg-purple-600 px-3 py-1 rounded-lg"
-            >
-              ▶
-            </button>
+      {/* SONGS */}
+      <div className="mt-4 w-full max-w-md">
+        {currentPlaylist.map((t) => (
+          <div key={t.id} className="flex justify-between p-2 bg-zinc-900 mb-2">
+            <span>{t.title}</span>
+            <button onClick={() => play(t)}>▶</button>
           </div>
         ))}
-
-        {currentPlaylist.length === 0 && (
-          <div className="text-zinc-400 text-center mt-4">
-            No songs yet 🎧
-          </div>
-        )}
       </div>
+
+      {/* INSTALL */}
+      {deferredPrompt && (
+        <button onClick={installApp} className="mt-6 bg-blue-600 px-4 py-2 rounded">
+          Install App 📱
+        </button>
+      )}
+
     </div>
   );
 }
