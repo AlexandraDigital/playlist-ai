@@ -50,7 +50,7 @@ export default function App() {
   };
 
   /* ---------- AI ---------- */
- const generateAI = async () => {
+const generateAI = async () => {
   try {
     setLoading(true);
 
@@ -62,7 +62,7 @@ export default function App() {
       body: JSON.stringify({ query: vibe }),
     });
 
-    // 🔥 IMPORTANT: read as TEXT first
+    // 🔥 read as text
     const text = await res.text();
     console.log("AI RAW:", text);
 
@@ -74,33 +74,58 @@ export default function App() {
       return;
     }
 
+    // ✅ DEFINE CONTENT FIRST
     const content = data?.choices?.[0]?.message?.content;
     if (!content) {
       alert("AI gave no content");
       return;
     }
 
-    const songs = content.split("\n").filter(Boolean);
+    console.log("AI CONTENT:", content);
 
-    let results = [];
+    // ✅ NOW parse
+    const songs = content.split("\n");
 
-    for (let s of songs.slice(0, 8)) {
+    const cleaned = songs
+      .map((s) => s.replace(/^\d+\.\s*/, "").trim())
+      .filter((s) => s.includes(" - "));
+
+    const results = cleaned.map((s) => {
+      const [artist, title] = s.split(" - ");
+      return {
+        artist: artist?.trim(),
+        title: title?.trim(),
+      };
+    });
+
+    // ✅ search youtube
+    let finalSongs = [];
+
+    for (let song of results.slice(0, 10)) {
       try {
-        const r = await fetch(`/search?q=${encodeURIComponent(s)}`);
+        const r = await fetch(
+          `/search?q=${encodeURIComponent(song.artist + " " + song.title)}`
+        );
         const d = await r.json();
 
-        const vid = d?.items?.[0];
-        if (!vid) continue;
-
-        results.push({
-          title: vid.snippet.title,
-          thumbnail: vid.snippet.thumbnails.medium.url,
-          url: `https://www.youtube.com/watch?v=${vid.id.videoId}`,
-        });
+        if (d.items?.length) {
+          finalSongs.push({
+            title: d.items[0].snippet.title,
+            videoId: d.items[0].id.videoId,
+            thumbnail: d.items[0].snippet.thumbnails.medium.url,
+          });
+        }
       } catch {}
     }
 
-    setPlaylist(results);
+    // ✅ DEBUG CHECK
+    if (finalSongs.length === 0) {
+      console.log("AI CONTENT RAW:", content);
+      alert("No songs found from search API");
+      return;
+    }
+
+    setPlaylist(finalSongs);
 
   } catch (e) {
     console.error(e);
