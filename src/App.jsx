@@ -168,21 +168,34 @@ return (
     </h1>
 
     {/* Input */}
-    <div className="w-full max-w-md flex gap-2 mb-6">
-      <input
-        className="flex-1 bg-zinc-900 border border-zinc-700 focus:border-purple-500 focus:ring-2 focus:ring-purple-600 outline-none text-white p-3 rounded-xl transition"
-        placeholder="Type a vibe..."
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
+    <div className="w-full max-w-md flex flex-col gap-3">
+  {playlist.map((t, i) => (
+    <div
+      key={i}
+      className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center gap-3 shadow-md"
+    >
+      {t.thumbnail && (
+        <img src={t.thumbnail} className="w-12 h-12 rounded" />
+      )}
+
+      <div className="flex flex-col flex-1">
+        <span className="text-sm font-semibold truncate">
+          {t.title}
+        </span>
+        <span className="text-xs text-zinc-400">
+          Tap to play
+        </span>
+      </div>
 
       <button
-        onClick={generateAI}
-        className="bg-purple-600 hover:bg-purple-700 px-4 rounded-xl font-semibold transition"
+        onClick={() => play(t)}
+        className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm"
       >
-        {loading ? "..." : "AI"}
+        ▶
       </button>
     </div>
+  ))}
+</div>
 
     {/* Upload */}
    <label className="mb-6 cursor-pointer bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl shadow-lg transition">
