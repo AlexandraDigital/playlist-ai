@@ -1,10 +1,12 @@
 export async function onRequestPost(context) {
-  if (context.request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
-
   try {
-    const { query } = await context.request.json();
+    const body = await context.request.json().catch(() => null);
+
+    if (!body || !body.query) {
+      return new Response(JSON.stringify({ error: "No query" }), {
+        status: 400,
+      });
+    }
 
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -17,21 +19,22 @@ export async function onRequestPost(context) {
         messages: [
           {
             role: "user",
-            content: `Give me 10 songs for: ${query}. Format: Song - Artist`,
+            content: `Give me 10 songs for: ${body.query}`,
           },
         ],
       }),
     });
 
-    const data = await res.json();
+    const text = await res.text();
 
-    return new Response(JSON.stringify(data), {
+    return new Response(text, {
       headers: { "Content-Type": "application/json" },
     });
 
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500,
-    });
+    return new Response(
+      JSON.stringify({ error: e.message || "Server error" }),
+      { status: 500 }
+    );
   }
 }
