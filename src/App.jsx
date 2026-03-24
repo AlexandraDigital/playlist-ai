@@ -247,6 +247,27 @@ return (
       />
     </label>
 
+
+    {/* Playlist Selector */}
+<div className="flex gap-2 mb-4 overflow-x-auto">
+  {playlists.map((p, i) => (
+    <button
+      key={i}
+      onClick={() => setCurrentIndex(i)}
+      className={`px-3 py-1 rounded-lg text-sm ${
+        i === currentIndex
+          ? "bg-purple-600"
+          : "bg-zinc-800"
+      }`}
+    >
+      {p.name}
+    </button>
+  ))}
+</div>
+
+{/* Playlist */}
+<div className="w-full max-w-md flex flex-col gap-3">
+
     {/* Playlist */}
     <div className="w-full max-w-md flex flex-col gap-3">
       {currentPlaylist.map((t, i) => (
