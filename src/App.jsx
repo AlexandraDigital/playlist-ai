@@ -48,14 +48,48 @@ export default function App() {
   };
 
 
-  const generateAI = () => {
-  const fakeSongs = [
-    { title: "Chill Vibes 🌙", videoId: "1", url: "" },
-    { title: "Night Drive 🚗", videoId: "2", url: "" },
-    { title: "Deep Focus 🎧", videoId: "3", url: "" },
-  ];
+const generateAI = async () => {
+  setLoading(true);
 
-  setPlaylist(fakeSongs);
+  try {
+    // 1. Get AI songs
+    const res = await fetch("/api/ai", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    });
+
+    const data = await res.json();
+    const text = data.choices[0].message.content;
+
+    // 2. Clean list
+    const songs = text
+      .split("\n")
+      .map(s => s.replace(/^\d+\.?\s*/, "").trim())
+      .filter(Boolean);
+
+    const results = [];
+
+    // 3. Search each song
+    for (let song of songs.slice(0, 10)) {
+      const r = await fetch(`/api/search?q=${encodeURIComponent(song)}`);
+      const d = await r.json();
+
+      if (d) {
+        results.push({
+          title: d.title,
+          videoId: d.videoId,
+          thumbnail: d.thumbnail,
+        });
+      }
+    }
+
+    setPlaylist(results);
+  } catch (e) {
+    console.error(e);
+    alert("AI failed");
+  }
+
+  setLoading(false);
 };
 
 
