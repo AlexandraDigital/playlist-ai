@@ -1,5 +1,4 @@
-
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 
 export default function App() {
   const [vibe, setVibe] = useState("");
@@ -7,59 +6,29 @@ export default function App() {
   const [song, setSong] = useState("");
 
   const [playlist, setPlaylist] = useState([]);
-  const [uploadedSongs, setUploadedSongs] = useState([]);
-  const [favorites, setFavorites] = useState([]);
+  const [playlistName, setPlaylistName] = useState("My Playlist");
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [repeat, setRepeat] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-
+  const fileInputRef = useRef();
   const dragItem = useRef();
   const dragOverItem = useRef();
-  const fileInputRef = useRef();
 
-  // 📱 INSTALL
-  useEffect(() => {
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    });
-  }, []);
-
-  const installApp = () => {
-    if (!deferredPrompt) return alert("Install not available");
-    deferredPrompt.prompt();
-  };
-
-  // ▶️ PLAYER
+  // ▶️ PLAY
   const playSong = (i) => setCurrentIndex(i);
 
-  // ❤️ FAVORITES
-  const toggleFavorite = (s) => {
-    setFavorites((prev) => {
-      const exists = prev.find((x) => x.videoId === s.videoId);
-      return exists
-        ? prev.filter((x) => x.videoId !== s.videoId)
-        : [...prev, s];
-    });
+  // ❌ REMOVE
+  const removeSong = (index) => {
+    setPlaylist((prev) => prev.filter((_, i) => i !== index));
   };
 
   // 🔀 DRAG
   const handleSort = () => {
-    let _list = [...playlist];
-    const dragged = _list.splice(dragItem.current, 1)[0];
-    _list.splice(dragOverItem.current, 0, dragged);
-    setPlaylist(_list);
-  };
-
-  // 🔗 SHARE
-  const share = () => {
-    const data = btoa(JSON.stringify(playlist));
-    const url = `${window.location.origin}?p=${data}`;
-    navigator.clipboard.writeText(url);
-    alert("Link copied!");
+    let list = [...playlist];
+    const dragged = list.splice(dragItem.current, 1)[0];
+    list.splice(dragOverItem.current, 0, dragged);
+    setPlaylist(list);
   };
 
   // 🔍 SEARCH
@@ -94,8 +63,6 @@ export default function App() {
     if (!vibe) return;
 
     try {
-      setLoading(true);
-
       const res = await fetch("/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -103,13 +70,12 @@ export default function App() {
       });
 
       const text = await res.text();
-      console.log("AI RAW:", text);
 
       let data;
       try {
         data = JSON.parse(text);
       } catch {
-        alert("AI response broken");
+        alert("AI broken");
         return;
       }
 
@@ -148,8 +114,6 @@ export default function App() {
     } catch {
       alert("AI failed");
     }
-
-    setLoading(false);
   };
 
   // 📤 UPLOAD
@@ -163,96 +127,114 @@ export default function App() {
       local: true,
     };
 
-    setUploadedSongs((prev) => [newSong, ...prev]);
     setPlaylist((prev) => [newSong, ...prev]);
   };
 
-  // ❌ REMOVE
-  const removeUploaded = (index) => {
-    setUploadedSongs((prev) => prev.filter((_, i) => i !== index));
-    setPlaylist((prev) => prev.filter((_, i) => i !== index));
+  // 🧹 CLEAR
+  const clearPlaylist = () => {
+    setPlaylist([]);
+    setCurrentIndex(0);
   };
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center">
-      <div className="w-full max-w-md sm:max-w-lg md:max-w-xl px-4">
+      <div className="w-full max-w-md sm:max-w-lg px-4">
 
         {/* TITLE */}
-        <h1 className="text-4xl text-center font-bold mb-8 bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-          🎧 Playlist AI
-        </h1>
+        <input
+          value={playlistName}
+          onChange={(e) => setPlaylistName(e.target.value)}
+          className="text-2xl font-bold text-center w-full mb-6 bg-transparent outline-none"
+        />
 
-        <div className="space-y-4">
+        {/* AI */}
+        <input
+          value={vibe}
+          onChange={(e) => setVibe(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && generateAI()}
+          placeholder="Type a vibe..."
+          className="w-full p-3 mb-3 rounded-xl bg-gray-900 border border-gray-800"
+        />
 
-          {/* AI */}
-          <input
-            value={vibe}
-            onChange={(e) => setVibe(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && generateAI()}
-            placeholder="Type a vibe..."
-            className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800"
-          />
+        <button className="w-full p-4 mb-4 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700 hover:opacity-90 transition">
+          Generate AI Playlist
+        </button>
+
+        {/* SEARCH */}
+        <input
+          value={artist}
+          onChange={(e) => setArtist(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && searchSong()}
+          placeholder="Artist"
+          className="w-full p-3 mb-2 rounded-xl bg-gray-900 border border-gray-800"
+        />
+
+        <input
+          value={song}
+          onChange={(e) => setSong(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && searchSong()}
+          placeholder="Song"
+          className="w-full p-3 mb-3 rounded-xl bg-gray-900 border border-gray-800"
+        />
+
+        {/* BUTTONS */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
 
           <button
-            onClick={generateAI}
-            className="w-full p-4 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700"
+            onClick={searchSong}
+            className="p-3 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 transition"
           >
-            Generate AI Playlist
+            Add
           </button>
 
-          {/* SEARCH */}
-          <input
-            value={artist}
-            onChange={(e) => setArtist(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchSong()}
-            placeholder="Artist"
-            className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800"
-          />
+          <button
+            onClick={clearPlaylist}
+            className="p-3 rounded-xl bg-gray-700 hover:bg-gray-600 active:scale-95 transition"
+          >
+            Clear
+          </button>
 
-          <input
-            value={song}
-            onChange={(e) => setSong(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && searchSong()}
-            placeholder="Song"
-            className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800"
-          />
-
-          {/* BUTTONS */}
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={searchSong} className="p-3 rounded-xl bg-purple-600">Add</button>
-            <button onClick={share} className="p-3 rounded-xl bg-purple-500">Share</button>
-            <button onClick={() => setRepeat(!repeat)} className="p-3 rounded-xl bg-gray-800">🔁</button>
-            <button onClick={installApp} className="p-3 rounded-xl bg-purple-600">Install</button>
-          </div>
-
-          {/* UPLOAD */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="audio/*"
-            onChange={handleUpload}
-            className="hidden"
-          />
+          <button
+            onClick={() => setRepeat(!repeat)}
+            className={`p-3 rounded-xl active:scale-95 transition ${
+              repeat
+                ? "bg-purple-600 hover:bg-purple-500 shadow-lg shadow-purple-900/40"
+                : "bg-gray-700 hover:bg-gray-600"
+            }`}
+          >
+            🔁 Repeat
+          </button>
 
           <button
             onClick={() => fileInputRef.current.click()}
-            className="w-full p-4 rounded-xl border-2 border-dashed border-purple-500 hover:bg-purple-500/10"
+            className="p-3 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-95 transition"
           >
-            📤 Upload Music
+            Upload
           </button>
+
         </div>
 
+        {/* FILE */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          onChange={handleUpload}
+          className="hidden"
+        />
+
         {/* PLAYLIST */}
-        <div className="mt-6 space-y-3">
+        <div className="space-y-3">
           {playlist.map((s, i) => (
             <div
               key={i}
               draggable
+              onClick={() => playSong(i)}
               onDragStart={() => (dragItem.current = i)}
               onDragEnter={() => (dragOverItem.current = i)}
               onDragEnd={handleSort}
               onDragOver={(e) => e.preventDefault()}
-              className="flex items-center gap-3 bg-gray-900 p-3 rounded-xl"
+              className="flex items-center gap-3 bg-gray-900 p-3 rounded-xl cursor-pointer hover:bg-gray-800 transition"
             >
               {s.thumbnail && (
                 <img src={s.thumbnail} className="w-14 rounded" />
@@ -260,17 +242,15 @@ export default function App() {
 
               <div className="flex-1 text-sm">{s.title}</div>
 
-              <button onClick={() => playSong(i)}>▶️</button>
-              <button onClick={() => toggleFavorite(s)}>❤️</button>
-
-              {s.local && (
-                <button
-                  onClick={() => removeUploaded(i)}
-                  className="text-red-400"
-                >
-                  ✖
-                </button>
-              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeSong(i);
+                }}
+                className="text-red-400 hover:text-red-300"
+              >
+                ❌
+              </button>
             </div>
           ))}
         </div>
@@ -279,16 +259,19 @@ export default function App() {
         {playlist[currentIndex] &&
           (playlist[currentIndex].local ? (
             <audio
+              key={currentIndex}
               className="w-full mt-6"
               src={playlist[currentIndex].url}
               controls
               autoPlay
+              loop={repeat}
             />
           ) : (
             <iframe
+              key={currentIndex}
               width="0"
               height="0"
-              src={`https://www.youtube.com/embed/${playlist[currentIndex].videoId}?autoplay=1`}
+              src={`https://www.youtube.com/embed/${playlist[currentIndex].videoId}?autoplay=1&loop=${repeat ? 1 : 0}`}
               allow="autoplay"
             />
           ))}
