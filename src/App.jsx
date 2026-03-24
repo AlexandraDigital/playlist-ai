@@ -156,7 +156,7 @@ const generateAI = async () => {
 }
 
 // ✅ NEW (multi-playlist)
-setPlaylists((prev) => {
+setPlaylists((prev) => [
   {
     name: query || "New Playlist",
     songs: results,
