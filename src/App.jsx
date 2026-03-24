@@ -145,17 +145,30 @@ return (
 <div className="w-full max-w-md flex flex-col gap-3">
   {playlist.map((t, i) => (
     <div
-      key={i}
-      className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center justify-between shadow-md"
-    >
-      <div className="flex flex-col flex-1">
-        <span className="text-sm font-semibold truncate">
-          {t.title}
-        </span>
-        <span className="text-xs text-zinc-400">
-          Tap to play
-        </span>
-      </div>
+  key={i}
+  className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center gap-3 shadow-md"
+>
+  <img
+    src={t.thumbnail}
+    className="w-12 h-12 rounded"
+  />
+
+  <div className="flex flex-col flex-1">
+    <span className="text-sm font-semibold truncate">
+      {t.title}
+    </span>
+    <span className="text-xs text-zinc-400">
+      Tap to play
+    </span>
+  </div>
+
+  <button
+    onClick={() => play(t)}
+    className="bg-purple-600 px-3 py-1 rounded-lg"
+  >
+    ▶
+  </button>
+</div>
 
       <button
         onClick={() => play(t)}
