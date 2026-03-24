@@ -148,14 +148,23 @@ const generateAI = async () => {
     }
 
     // 4. Fallback if search fails
-    if (results.length === 0) {
-      results.push({
-        title: "No songs found (check search API)",
-        videoId: "test",
-      });
-    }
+   if (results.length === 0) {
+  results.push({
+    title: "No songs found (check search API)",
+    videoId: "test",
+  });
+}
 
-    setPlaylist(results);
+// ✅ NEW (multi-playlist)
+setPlaylists((prev) => {
+  {
+    name: query || "New Playlist",
+    songs: results,
+  },
+  ...prev,
+]);
+
+setCurrentIndex(0);
 
   } catch (e) {
     console.error(e);
@@ -181,12 +190,27 @@ const handleUpload = async (e) => {
   const store = tx.objectStore("songs");
   store.put(track);
 
-  setPlaylist((prev) => [
-    ...prev,
-    { ...track, url: URL.createObjectURL(file) },
-  ]);
-};
+setPlaylists((prev) => {
+  const updated = [...prev];
 
+  if (!updated[currentIndex]) {
+    // create first playlist if none exists
+    return [
+      {
+        name: "My Music",
+        songs: [{ ...track, url: URL.createObjectURL(file) }],
+      },
+    ];
+  }
+
+  updated[currentIndex].songs.unshift({
+    ...track,
+    url: URL.createObjectURL(file),
+  });
+
+  return updated;
+});
+  
 return (
   <div className="min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white flex flex-col items-center p-6">
     
@@ -252,7 +276,7 @@ return (
         </div>
       ))}
 
-      {playlist.length === 0 && (
+      {currentPlaylist.length === 0 && (
         <div className="text-zinc-400 text-center mt-4">
           No songs yet 🎧
         </div>
