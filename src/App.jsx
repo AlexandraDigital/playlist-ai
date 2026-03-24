@@ -98,40 +98,63 @@ const generateAI = async () => {
   setLoading(true);
 
   try {
-    // 1. Get AI songs
-    const res = await fetch("/api/ai/", {
+    // 1. Call AI
+    const res = await fetch("/api/ai", {
       method: "POST",
       body: JSON.stringify({ query }),
     });
-const raw = await res.text();
-console.log("AI raw:", raw);
 
-const data = JSON.parse(raw);
-const text = data.choices[0].message.content;
+    const raw = await res.text();
+    console.log("AI RAW:", raw);
 
-    // 2. Clean list
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error("Invalid AI response");
+    }
+
+    if (!data.choices) throw new Error("No AI data");
+
+    const text = data.choices[0].message.content;
+
+    // 2. Clean song list (robust)
     const songs = text
       .split("\n")
-      .map(s => s.replace(/^\d+\.?\s*/, "").trim())
-      .filter(Boolean);
+      .map(s => s.replace(/^\d+[\.\-\)]?\s*/, "").trim())
+      .filter(s => s.length > 2)
+      .slice(0, 10);
 
     const results = [];
 
     // 3. Search each song
-    for (let song of songs.slice(0, 10)) {
-      const r = await fetch(`/api/search?q=${encodeURIComponent(song)}`);
-      const d = await r.json();
+    for (let song of songs) {
+      try {
+        const r = await fetch(`/api/search?q=${encodeURIComponent(song)}`);
+        const d = await r.json();
 
-      if (d) {
-        results.push({
-          title: d.title,
-          videoId: d.videoId,
-          thumbnail: d.thumbnail,
-        });
+        if (d && d.videoId) {
+          results.push({
+            title: d.title,
+            videoId: d.videoId,
+            thumbnail: d.thumbnail,
+          });
+        }
+      } catch (err) {
+        console.log("Search failed for:", song);
       }
     }
 
+    // 4. Fallback if search fails
+    if (results.length === 0) {
+      results.push({
+        title: "No songs found (check search API)",
+        videoId: "test",
+      });
+    }
+
     setPlaylist(results);
+
   } catch (e) {
     console.error(e);
     alert("AI failed");
