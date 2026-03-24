@@ -162,84 +162,75 @@ const handleUpload = async (e) => {
 
 return (
   <div className="min-h-screen bg-gradient-to-b from-black via-zinc-900 to-black text-white flex flex-col items-center p-6">
+    
     {/* Title */}
     <h1 className="text-4xl font-bold mb-8 text-purple-400 drop-shadow-lg">
       🎧 Playlist AI
     </h1>
 
-    {/* Input */}
-    <div className="w-full max-w-md flex flex-col gap-3">
-  {playlist.map((t, i) => (
-    <div
-      key={i}
-      className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center gap-3 shadow-md"
-    >
-      {t.thumbnail && (
-        <img src={t.thumbnail} className="w-12 h-12 rounded" />
-      )}
-
-      <div className="flex flex-col flex-1">
-        <span className="text-sm font-semibold truncate">
-          {t.title}
-        </span>
-        <span className="text-xs text-zinc-400">
-          Tap to play
-        </span>
-      </div>
+    {/* Input + AI */}
+    <div className="w-full max-w-md flex gap-2 mb-6">
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Type a vibe..."
+        className="flex-1 bg-zinc-900 text-white p-3 rounded-xl border border-zinc-700"
+      />
 
       <button
-        onClick={() => play(t)}
-        className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm"
+        onClick={generateAI}
+        className="bg-purple-600 hover:bg-purple-700 px-4 rounded-xl"
       >
-        ▶
+        AI
       </button>
     </div>
-  ))}
-</div>
 
     {/* Upload */}
-   <label className="mb-6 cursor-pointer bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl shadow-lg transition">
-  Upload Music 🎵
-  <input
-    type="file"
-    accept="audio/*"
-    onChange={handleUpload}
-    className="hidden"
-  />
-</label>
+    <label className="mb-6 cursor-pointer bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl shadow-lg transition">
+      Upload Music 🎵
+      <input
+        type="file"
+        accept="audio/*"
+        onChange={handleUpload}
+        className="hidden"
+      />
+    </label>
 
-{/* Playlist */}
-<div className="w-full max-w-md flex flex-col gap-3">
-  {playlist.map((t, i) => (
-    <div
-      key={i}
-      className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center gap-3 shadow-md"
-    >
-      {t.thumbnail && (
-        <img
-          src={t.thumbnail}
-          className="w-12 h-12 rounded"
-        />
+    {/* Playlist */}
+    <div className="w-full max-w-md flex flex-col gap-3">
+      {playlist.map((t, i) => (
+        <div
+          key={i}
+          className="bg-zinc-900/80 backdrop-blur border border-zinc-800 hover:border-purple-500 transition p-4 rounded-xl flex items-center gap-3 shadow-md"
+        >
+          {t.thumbnail && (
+            <img src={t.thumbnail} className="w-12 h-12 rounded" />
+          )}
+
+          <div className="flex flex-col flex-1">
+            <span className="text-sm font-semibold truncate">
+              {t.title}
+            </span>
+            <span className="text-xs text-zinc-400">
+              Tap to play
+            </span>
+          </div>
+
+          <button
+            onClick={() => play(t)}
+            className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm"
+          >
+            ▶
+          </button>
+        </div>
+      ))}
+
+      {playlist.length === 0 && (
+        <div className="text-zinc-400 text-center mt-4">
+          No songs yet 🎧
+        </div>
       )}
-
-      <div className="flex flex-col flex-1">
-        <span className="text-sm font-semibold truncate">
-          {t.title}
-        </span>
-        <span className="text-xs text-zinc-400">
-          Tap to play
-        </span>
-      </div>
-
-      <button
-        onClick={() => play(t)}
-        className="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm"
-      >
-        ▶
-      </button>
     </div>
-  ))}
-</div>
 
     {/* Install */}
     {deferredPrompt && (
