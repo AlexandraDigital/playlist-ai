@@ -5,7 +5,7 @@ export async function onRequestGet({ url, env }) {
   try {
     // 🔴 1. Try YouTube first
     let ytRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&key=${env.YT_API_KEY}&maxResults=1`
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(q)}&key=${env.YT_API_KEY}&maxResults=1`
     );
     let ytData = await ytRes.json();
     let vid = ytData.items?.[0];
@@ -54,7 +54,7 @@ export async function onRequestGet({ url, env }) {
     const retryQuery = `${track.name} ${track.artists[0].name}`;
 
     const retryRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(retryQuery)}&key=${env.YT_API_KEY}&maxResults=1`
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(retryQuery)}&key=${env.YT_API_KEY}&maxResults=1`
     );
 
     const retryData = await retryRes.json();
