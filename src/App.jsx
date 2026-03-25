@@ -212,17 +212,7 @@ export default function App() {
           </h1>
         </div>
 
-        {/* INSTALL */}
-        <div className="w-full flex justify-end mb-2">
-          {deferredPrompt && (
-            <button
-              onClick={installApp}
-              className="bg-purple-600 px-3 py-2 rounded-xl text-sm"
-            >
-              Install
-            </button>
-          )}
-        </div>
+        
 
         {/* HEADER */}
         <div className="flex justify-center gap-2 mb-6">
@@ -249,9 +239,19 @@ export default function App() {
         <input ref={fileInputRef} type="file" accept="audio/*" onChange={upload} hidden />
 
         {/* ACTIONS */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        <div className="grid grid-cols-3 gap-2 mb-4">
           <button onClick={clearPlaylist} className="bg-gray-700 p-3 rounded-xl">Clear</button>
+
           <button onClick={() => setRepeat(!repeat)} className={`p-3 rounded-xl ${repeat ? "bg-purple-600" : "bg-gray-700"}`}>🔁</button>
+
+          {deferredPrompt && (
+            <button
+              onClick={installApp}
+              className="bg-purple-600 p-3 rounded-xl text-sm"
+            >
+              Install
+            </button>
+          )}
         </div>
 
         {/* SONG LIST */}
@@ -305,4 +305,5 @@ export default function App() {
     </div>
   );
 }
+
 
