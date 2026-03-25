@@ -1,11 +1,119 @@
 import { useState, useEffect, useRef } from "react";
 
+const TRANSLATIONS = {
+  en: {
+    appName: "Playlist AI",
+    aiGenerate: "✨ AI Generate",
+    aiPlaceholder: "Type a vibe, mood or genre…",
+    generating: "⏳ Generating…",
+    generateBtn: "⚡ Generate AI Playlist",
+    addSong: "🔍 Add Song",
+    artistPlaceholder: "Artist",
+    songPlaceholder: "Song title",
+    addSongBtn: "Add Song",
+    nowPlaying: "🎵 Now Playing",
+    clear: "🗑 Clear",
+    install: "📲 Install",
+    noSongs: "No songs yet — generate or add some!",
+    songs: (n) => `${n} song${n !== 1 ? "s" : ""}`,
+    autosaved: "Autosaved",
+    rename: "Rename playlist",
+    newPlaylist: "New playlist",
+    deletePlaylist: "Delete playlist",
+    cantDelete: "Can't delete the last playlist",
+    newPlaylistPrompt: "Name your playlist:",
+    newPlaylistDefault: "New Playlist",
+    noResults: "No results found on YouTube or Spotify",
+    searchFailed: "Search failed: ",
+    aiError: "AI error: ",
+    aiNoSongs: "AI returned no songs — make sure GROQ_API_KEY is set in Cloudflare Pages → Settings → Environment Variables",
+    aiNoFind: "Couldn't find any songs. Check your API keys.",
+    dragToReorder: "Drag to reorder",
+    remove: "Remove song",
+    toggleRepeat: "Toggle repeat",
+    defaultPlaylist: "My Playlist",
+  },
+  es: {
+    appName: "Playlist AI",
+    aiGenerate: "✨ Generar con IA",
+    aiPlaceholder: "Escribe un ambiente, estado de ánimo o género…",
+    generating: "⏳ Generando…",
+    generateBtn: "⚡ Generar Playlist con IA",
+    addSong: "🔍 Agregar Canción",
+    artistPlaceholder: "Artista",
+    songPlaceholder: "Título de la canción",
+    addSongBtn: "Agregar",
+    nowPlaying: "🎵 Reproduciendo",
+    clear: "🗑 Borrar",
+    install: "📲 Instalar",
+    noSongs: "Sin canciones — ¡genera o agrega algunas!",
+    songs: (n) => `${n} canción${n !== 1 ? "es" : ""}`,
+    autosaved: "Guardado automático",
+    rename: "Renombrar playlist",
+    newPlaylist: "Nueva playlist",
+    deletePlaylist: "Eliminar playlist",
+    cantDelete: "No se puede eliminar la última playlist",
+    newPlaylistPrompt: "Nombre tu playlist:",
+    newPlaylistDefault: "Nueva Playlist",
+    noResults: "No se encontraron resultados en YouTube o Spotify",
+    searchFailed: "Búsqueda fallida: ",
+    aiError: "Error de IA: ",
+    aiNoSongs: "La IA no devolvió canciones — asegúrate de tener GROQ_API_KEY configurado en Cloudflare Pages",
+    aiNoFind: "No se encontraron canciones. Verifica tus claves de API.",
+    dragToReorder: "Arrastrar para reordenar",
+    remove: "Eliminar canción",
+    toggleRepeat: "Repetir",
+    defaultPlaylist: "Mi Playlist",
+  },
+  zh: {
+    appName: "Playlist AI",
+    aiGenerate: "✨ AI 生成",
+    aiPlaceholder: "输入氛围、心情或曲风…",
+    generating: "⏳ 生成中…",
+    generateBtn: "⚡ AI 生成歌单",
+    addSong: "🔍 添加歌曲",
+    artistPlaceholder: "歌手",
+    songPlaceholder: "歌曲名称",
+    addSongBtn: "添加",
+    nowPlaying: "🎵 正在播放",
+    clear: "🗑 清空",
+    install: "📲 安装",
+    noSongs: "暂无歌曲 — 生成或添加一些吧！",
+    songs: (n) => `${n} 首歌曲`,
+    autosaved: "已自动保存",
+    rename: "重命名歌单",
+    newPlaylist: "新建歌单",
+    deletePlaylist: "删除歌单",
+    cantDelete: "无法删除最后一个歌单",
+    newPlaylistPrompt: "请输入歌单名称：",
+    newPlaylistDefault: "新歌单",
+    noResults: "在 YouTube 或 Spotify 上未找到结果",
+    searchFailed: "搜索失败：",
+    aiError: "AI 错误：",
+    aiNoSongs: "AI 未返回歌曲 — 请确保在 Cloudflare Pages 中设置了 GROQ_API_KEY",
+    aiNoFind: "未找到任何歌曲，请检查您的 API 密钥。",
+    dragToReorder: "拖动以重新排序",
+    remove: "移除歌曲",
+    toggleRepeat: "切换循环",
+    defaultPlaylist: "我的歌单",
+  },
+};
+
+const LANG_OPTIONS = [
+  { code: "en", flag: "🇺🇸", label: "EN" },
+  { code: "es", flag: "🇪🇸", label: "ES" },
+  { code: "zh", flag: "🇨🇳", label: "中文" },
+];
+
 export default function App() {
+  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
+  const t = TRANSLATIONS[lang];
+
   const [vibe, setVibe] = useState("");
   const [artist, setArtist] = useState("");
   const [song, setSong] = useState("");
   const [loading, setLoading] = useState(false);
-  const [playlists, setPlaylists] = useState([{ name: "My Playlist", songs: [] }]);
+  const [playlists, setPlaylists] = useState([{ name: t.defaultPlaylist, songs: [] }]);
   const [currentPlaylist, setCurrentPlaylist] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [repeat, setRepeat] = useState(false);
@@ -18,6 +126,10 @@ export default function App() {
   const fileInputRef = useRef();
   const renameInputRef = useRef();
   const active = playlists[currentPlaylist];
+
+  useEffect(() => {
+    localStorage.setItem("lang", lang);
+  }, [lang]);
 
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
@@ -33,7 +145,6 @@ export default function App() {
     addSong({ title: file.name, url: URL.createObjectURL(file), source: "local" });
   };
 
-  // Load from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem("library");
@@ -50,7 +161,6 @@ export default function App() {
     }
   }, []);
 
-  // Autosave to localStorage
   useEffect(() => {
     localStorage.setItem("library", JSON.stringify(playlists));
     localStorage.setItem("playerState", JSON.stringify({ currentPlaylist, currentIndex }));
@@ -70,7 +180,7 @@ export default function App() {
   };
 
   const newPlaylist = () => {
-    const name = prompt("Name your playlist:") || "New Playlist";
+    const name = prompt(t.newPlaylistPrompt) || t.newPlaylistDefault;
     const updated = [...playlists, { name, songs: [] }];
     setPlaylists(updated);
     setCurrentPlaylist(updated.length - 1);
@@ -78,7 +188,7 @@ export default function App() {
   };
 
   const deletePlaylist = () => {
-    if (playlists.length === 1) return alert("Can't delete the last playlist");
+    if (playlists.length === 1) return alert(t.cantDelete);
     const updated = playlists.filter((_, i) => i !== currentPlaylist);
     setPlaylists(updated);
     setCurrentPlaylist(0);
@@ -100,7 +210,6 @@ export default function App() {
     setIsRenaming(false);
   };
 
-  // Drag & drop
   const handleDragStart = (i) => setDragIndex(i);
   const handleDragOver = (e, i) => { e.preventDefault(); setDragOverIndex(i); };
   const handleDrop = (i) => {
@@ -153,10 +262,10 @@ export default function App() {
       } else {
         const spotifyTrack = await trySpotify(q);
         if (spotifyTrack) addSong(spotifyTrack);
-        else { alert("No results found on YouTube or Spotify"); return; }
+        else { alert(t.noResults); return; }
       }
       setArtist(""); setSong("");
-    } catch (e) { alert("Search failed: " + e.message); }
+    } catch (e) { alert(t.searchFailed + e.message); }
   };
 
   const generateAI = async () => {
@@ -170,7 +279,7 @@ export default function App() {
       });
       const songs = data.songs;
       if (!songs?.length) {
-        alert(data.error || "AI returned no songs — make sure GROQ_API_KEY is set in Cloudflare Pages → Settings → Environment Variables");
+        alert(data.error || t.aiNoSongs);
         setLoading(false);
         return;
       }
@@ -192,13 +301,13 @@ export default function App() {
         const spotifyTrack = await trySpotify(s);
         if (spotifyTrack) results.push(spotifyTrack);
       }
-      if (!results.length) { alert("Couldn't find any songs. Check your API keys."); setLoading(false); return; }
+      if (!results.length) { alert(t.aiNoFind); setLoading(false); return; }
       const updated = [...playlists];
       updated[currentPlaylist].songs = results;
       setPlaylists(updated);
       setCurrentIndex(0);
     } catch (e) {
-      alert("AI error: " + (e.message || "Unknown error"));
+      alert(t.aiError + (e.message || "Unknown error"));
     }
     setLoading(false);
   };
@@ -218,11 +327,31 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-center gap-3 py-5 border-b border-gray-900">
-        <span className="text-3xl">🎧</span>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
-          Playlist AI
-        </h1>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-900">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">🎧</span>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
+            {t.appName}
+          </h1>
+        </div>
+
+        {/* Language switcher */}
+        <div className="flex gap-1 bg-gray-900 rounded-xl p-1">
+          {LANG_OPTIONS.map((opt) => (
+            <button
+              key={opt.code}
+              onClick={() => setLang(opt.code)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                lang === opt.code
+                  ? "bg-purple-600 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-700"
+              }`}
+            >
+              <span>{opt.flag}</span>
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Main two-column layout */}
@@ -233,12 +362,12 @@ export default function App() {
 
           {/* AI Generate card */}
           <div className="bg-gray-900 rounded-2xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">✨ AI Generate</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">{t.aiGenerate}</p>
             <input
               value={vibe}
               onChange={(e) => setVibe(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && generateAI()}
-              placeholder="Type a vibe, mood or genre…"
+              placeholder={t.aiPlaceholder}
               className="w-full p-3 mb-2 bg-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-600"
             />
             <button
@@ -246,24 +375,24 @@ export default function App() {
               disabled={loading}
               className="w-full bg-gradient-to-r from-purple-600 to-purple-800 p-3 rounded-xl font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110 transition"
             >
-              {loading ? "⏳ Generating…" : "⚡ Generate AI Playlist"}
+              {loading ? t.generating : t.generateBtn}
             </button>
           </div>
 
           {/* Add Song card */}
           <div className="bg-gray-900 rounded-2xl p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">🔍 Add Song</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">{t.addSong}</p>
             <input
               value={artist}
               onChange={(e) => setArtist(e.target.value)}
-              placeholder="Artist"
+              placeholder={t.artistPlaceholder}
               className="w-full p-3 mb-2 bg-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-600"
             />
             <input
               value={song}
               onChange={(e) => setSong(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && searchSong()}
-              placeholder="Song title"
+              placeholder={t.songPlaceholder}
               className="w-full p-3 mb-2 bg-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-600"
             />
             <div className="flex gap-2">
@@ -271,7 +400,7 @@ export default function App() {
                 onClick={searchSong}
                 className="flex-1 bg-purple-600 hover:bg-purple-500 p-3 rounded-xl font-semibold text-sm transition"
               >
-                Add Song
+                {t.addSongBtn}
               </button>
               <button
                 onClick={() => fileInputRef.current.click()}
@@ -287,9 +416,8 @@ export default function App() {
           {/* Now Playing card */}
           {currentSong && (
             <div className="bg-gray-900 rounded-2xl p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">🎵 Now Playing</p>
+              <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{t.nowPlaying}</p>
 
-              {/* Thumbnail hero for YouTube */}
               {currentSong.source === "youtube" && currentSong.videoId && (
                 <div className="relative w-full mb-3 rounded-xl overflow-hidden">
                   <img
@@ -306,18 +434,16 @@ export default function App() {
                 <p className="text-sm font-medium truncate mb-2">{currentSong.title}</p>
               )}
 
-              {/* Prev / Repeat / Next */}
               <div className="flex justify-center gap-3 mb-3">
                 <button onClick={prevSong} className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl transition">⏮</button>
                 <button
                   onClick={() => setRepeat(!repeat)}
                   className={`px-4 py-2 rounded-xl transition ${repeat ? "bg-purple-600" : "bg-gray-700 hover:bg-gray-600"}`}
-                  title="Toggle repeat"
+                  title={t.toggleRepeat}
                 >🔁</button>
                 <button onClick={nextSong} className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl transition">⏭</button>
               </div>
 
-              {/* Player embed */}
               {currentSong.source === "local" ? (
                 <audio src={currentSong.url} controls autoPlay loop={repeat} className="w-full" />
               ) : currentSong.source === "spotify" ? (
@@ -342,11 +468,11 @@ export default function App() {
           {/* Utility row */}
           <div className="flex gap-2">
             <button onClick={clearPlaylist} className="flex-1 bg-gray-800 hover:bg-gray-700 p-2 rounded-xl text-sm transition">
-              🗑 Clear
+              {t.clear}
             </button>
             {deferredPrompt && (
               <button onClick={installApp} className="flex-1 bg-purple-700 hover:bg-purple-600 p-2 rounded-xl text-sm transition">
-                📲 Install
+                {t.install}
               </button>
             )}
           </div>
@@ -373,17 +499,17 @@ export default function App() {
               <button
                 onClick={startRename}
                 className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm transition"
-                title="Rename playlist"
+                title={t.rename}
               >✏️</button>
               <button
                 onClick={newPlaylist}
                 className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm font-bold transition"
-                title="New playlist"
+                title={t.newPlaylist}
               >+</button>
               <button
                 onClick={deletePlaylist}
                 className="bg-gray-700 hover:bg-red-900 px-3 py-1 rounded-lg text-sm transition"
-                title="Delete playlist"
+                title={t.deletePlaylist}
               >🗑</button>
             </div>
 
@@ -412,7 +538,7 @@ export default function App() {
             {active.songs.length === 0 && (
               <div className="flex flex-col items-center justify-center h-48 text-gray-600">
                 <div className="text-5xl mb-3">🎵</div>
-                <p className="text-sm">No songs yet — generate or add some!</p>
+                <p className="text-sm">{t.noSongs}</p>
               </div>
             )}
 
@@ -433,7 +559,6 @@ export default function App() {
                     : "bg-gray-800 hover:bg-gray-700"
                 } ${dragIndex === i ? "opacity-30" : ""}`}
               >
-                {/* Thumbnail / cover art */}
                 {s.source === "youtube" && s.videoId ? (
                   <img
                     src={s.thumbnail || `https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
@@ -451,7 +576,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Title + source */}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate leading-tight">{s.title}</p>
                   <p className={`text-xs mt-0.5 capitalize ${
@@ -460,21 +584,18 @@ export default function App() {
                   }`}>{s.source}</p>
                 </div>
 
-                {/* Playing indicator */}
                 {i === currentIndex && (
                   <span className="text-purple-400 text-xs shrink-0">▶</span>
                 )}
 
-                {/* Drag handle */}
-                <span className="text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 text-lg px-1" title="Drag to reorder">
+                <span className="text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 text-lg px-1" title={t.dragToReorder}>
                   ⠿
                 </span>
 
-                {/* Remove */}
                 <button
                   onClick={(e) => { e.stopPropagation(); removeSong(i); }}
                   className="text-gray-600 hover:text-red-400 shrink-0 transition"
-                  title="Remove song"
+                  title={t.remove}
                 >
                   ✕
                 </button>
@@ -485,11 +606,11 @@ export default function App() {
           {/* Footer */}
           <div className="px-4 py-2 border-t border-gray-800 flex items-center justify-between">
             <span className="text-xs text-gray-600">
-              {active.songs.length} song{active.songs.length !== 1 ? "s" : ""}
+              {t.songs(active.songs.length)}
             </span>
             <span className="text-xs text-green-600 flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span>
-              Autosaved
+              {t.autosaved}
             </span>
           </div>
         </div>
