@@ -10,7 +10,7 @@ export async function onRequestGet({ url, env }) {
     let ytData = await ytRes.json();
     let vid = ytData.items?.[0];
 
-    if (vid) {
+    if (vid?.id?.videoId) {
       return new Response(JSON.stringify({ items: [vid] }));
     }
 
