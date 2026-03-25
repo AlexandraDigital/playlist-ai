@@ -34,6 +34,8 @@ const TRANSLATIONS = {
     defaultPlaylist: "My Playlist",
     confirmReplace: "This will replace all songs in your playlist. Continue?",
     spotifyRepeatNote: "Use ↺ inside the Spotify player for repeat",
+    tabYouTube: "▶ YouTube",
+    tabSpotify: "♫ Spotify",
   },
   es: {
     appName: "Playlist AI",
@@ -68,6 +70,8 @@ const TRANSLATIONS = {
     defaultPlaylist: "Mi Playlist",
     confirmReplace: "Esto reemplazará todas las canciones de tu playlist. ¿Continuar?",
     spotifyRepeatNote: "Usa ↺ dentro del reproductor de Spotify para repetir",
+    tabYouTube: "▶ YouTube",
+    tabSpotify: "♫ Spotify",
   },
   zh: {
     appName: "Playlist AI",
@@ -102,6 +106,8 @@ const TRANSLATIONS = {
     defaultPlaylist: "我的歌单",
     confirmReplace: "这将替换歌单中的所有歌曲，是否继续？",
     spotifyRepeatNote: "请使用 Spotify 播放器内的 ↺ 按钮来循环播放",
+    tabYouTube: "▶ YouTube",
+    tabSpotify: "♫ Spotify",
   },
 };
 
@@ -128,10 +134,17 @@ export default function App() {
   const [renameValue, setRenameValue] = useState("");
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  // "youtube" | "spotify" — which player tab is active for the current song
+  const [sourceTab, setSourceTab] = useState("youtube");
 
   const fileInputRef = useRef();
   const renameInputRef = useRef();
   const active = playlists[currentPlaylist];
+
+  // Reset player tab to YouTube whenever the song changes
+  useEffect(() => {
+    setSourceTab("youtube");
+  }, [currentIndex, currentPlaylist]);
 
   useEffect(() => {
     localStorage.setItem("lang", lang);
@@ -172,7 +185,6 @@ export default function App() {
     localStorage.setItem("playerState", JSON.stringify({ currentPlaylist, currentIndex }));
   }, [playlists, currentPlaylist, currentIndex]);
 
-  // BUG FIX #2: avoid mutating nested state — create new songs array
   const addSong = (s) => {
     const updated = [...playlists];
     updated[currentPlaylist] = {
@@ -182,7 +194,6 @@ export default function App() {
     setPlaylists(updated);
   };
 
-  // BUG FIX #1 + #2: correct index adjustment when removing + no mutation
   const removeSong = (i) => {
     const updated = [...playlists];
     const newSongs = [...updated[currentPlaylist].songs];
@@ -191,8 +202,8 @@ export default function App() {
     setPlaylists(updated);
     setCurrentIndex((prev) => {
       if (newSongs.length === 0) return 0;
-      if (i < prev) return prev - 1;           // song removed before current → shift back
-      return Math.min(prev, newSongs.length - 1); // song removed at/after current → clamp
+      if (i < prev) return prev - 1;
+      return Math.min(prev, newSongs.length - 1);
     });
   };
 
@@ -218,7 +229,6 @@ export default function App() {
     setTimeout(() => renameInputRef.current?.focus(), 50);
   };
 
-  // BUG FIX #2: avoid mutating nested playlist object
   const confirmRename = () => {
     if (renameValue.trim()) {
       const updated = [...playlists];
@@ -250,43 +260,44 @@ export default function App() {
     const res = await fetch(url, options);
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
-      throw new Error(`The ${url} endpoint returned an HTML page. Make sure Cloudflare Pages functions are deployed and GROQ_API_KEY is set.`);
+      throw new Error(`The ${url} endpoint returned an HTML page. Make sure Cloudflare Pages functions are deployed and API keys are set.`);
     }
     return res.json();
   };
 
-  const trySpotify = async (query) => {
-    try {
-      const res = await fetch(`/spotify?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      if (data.track) return { title: data.track.title, spotifyEmbedUrl: data.track.embedUrl, source: "spotify" };
-    } catch {}
-    return null;
+  // Fetch YouTube and Spotify in parallel, return a combined song object
+  const fetchBoth = async (query) => {
+    const [ytData, spotifyData] = await Promise.all([
+      safeFetchJSON(`/search?q=${encodeURIComponent(query)}`).catch(() => ({ items: [] })),
+      fetch(`/spotify?q=${encodeURIComponent(query)}`).then((r) => r.json()).catch(() => null),
+    ]);
+
+    const vid = ytData.items?.[0] || null;
+    const spotifyTrack = spotifyData?.track || null;
+
+    if (!vid && !spotifyTrack) return null;
+
+    const source = vid && spotifyTrack ? "both" : vid ? "youtube" : "spotify";
+    return {
+      title: vid ? vid.snippet.title : spotifyTrack.title,
+      videoId: vid ? vid.id.videoId : null,
+      thumbnail: vid ? `https://img.youtube.com/vi/${vid.id.videoId}/mqdefault.jpg` : null,
+      spotifyEmbedUrl: spotifyTrack ? spotifyTrack.embedUrl : null,
+      source,
+    };
   };
 
   const searchSong = async () => {
     if (!artist && !song) return;
     try {
       const q = `${artist} ${song}`;
-      const data = await safeFetchJSON(`/search?q=${encodeURIComponent(q)}`);
-      const vid = data.items?.[0];
-      if (vid) {
-        addSong({
-          title: vid.snippet.title,
-          videoId: vid.id.videoId,
-          thumbnail: `https://img.youtube.com/vi/${vid.id.videoId}/mqdefault.jpg`,
-          source: "youtube",
-        });
-      } else {
-        const spotifyTrack = await trySpotify(q);
-        if (spotifyTrack) addSong(spotifyTrack);
-        else { alert(t.noResults); return; }
-      }
+      const result = await fetchBoth(q);
+      if (!result) { alert(t.noResults); return; }
+      addSong(result);
       setArtist(""); setSong("");
     } catch (e) { alert(t.searchFailed + e.message); }
   };
 
-  // BUG FIX #4: confirm before replacing + BUG FIX #2: no mutation
   const generateAI = async () => {
     if (!vibe) return;
     if (active.songs.length > 0 && !window.confirm(t.confirmReplace)) return;
@@ -304,22 +315,12 @@ export default function App() {
         return;
       }
       const results = [];
+      // Fetch YouTube + Spotify in parallel per song, songs processed sequentially to avoid rate limits
       for (const s of songs) {
         try {
-          const d = await safeFetchJSON(`/search?q=${encodeURIComponent(s)}`);
-          const vid = d.items?.[0];
-          if (vid) {
-            results.push({
-              title: vid.snippet.title,
-              videoId: vid.id.videoId,
-              thumbnail: `https://img.youtube.com/vi/${vid.id.videoId}/mqdefault.jpg`,
-              source: "youtube",
-            });
-            continue;
-          }
+          const result = await fetchBoth(s);
+          if (result) results.push(result);
         } catch {}
-        const spotifyTrack = await trySpotify(s);
-        if (spotifyTrack) results.push(spotifyTrack);
       }
       if (!results.length) { alert(t.aiNoFind); setLoading(false); return; }
       const updated = [...playlists];
@@ -332,7 +333,6 @@ export default function App() {
     setLoading(false);
   };
 
-  // BUG FIX #2: no mutation
   const clearPlaylist = () => {
     const updated = [...playlists];
     updated[currentPlaylist] = { ...updated[currentPlaylist], songs: [] };
@@ -344,7 +344,10 @@ export default function App() {
   const prevSong = () => { if (!active.songs.length) return; setCurrentIndex((prev) => (prev - 1 + active.songs.length) % active.songs.length); };
 
   const currentSong = active.songs[currentIndex];
-  const isSpotify = currentSong?.source === "spotify";
+  // True when the active player view is Spotify (either source="spotify" or source="both" on spotify tab)
+  const showingSpotify =
+    currentSong?.source === "spotify" ||
+    (currentSong?.source === "both" && sourceTab === "spotify");
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
@@ -440,7 +443,9 @@ export default function App() {
             <div className="bg-gray-900 rounded-2xl p-4">
               <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{t.nowPlaying}</p>
 
-              {currentSong.source === "youtube" && currentSong.videoId && (
+              {/* YouTube thumbnail — shown when on YouTube tab or source is youtube-only */}
+              {(currentSong.source === "youtube" || (currentSong.source === "both" && sourceTab === "youtube")) &&
+                currentSong.videoId && (
                 <div className="relative w-full mb-3 rounded-xl overflow-hidden">
                   <img
                     src={`https://img.youtube.com/vi/${currentSong.videoId}/mqdefault.jpg`}
@@ -452,51 +457,93 @@ export default function App() {
                 </div>
               )}
 
-              {currentSong.source !== "youtube" && (
+              {/* Title for spotify-only or local */}
+              {(currentSong.source === "spotify" || currentSong.source === "local") && (
                 <p className="text-sm font-medium truncate mb-2">{currentSong.title}</p>
               )}
 
+              {/* Source tab switcher — only shown when both are available */}
+              {currentSong.source === "both" && (
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setSourceTab("youtube")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      sourceTab === "youtube"
+                        ? "bg-red-600 text-white"
+                        : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                    }`}
+                  >
+                    {t.tabYouTube}
+                  </button>
+                  <button
+                    onClick={() => setSourceTab("spotify")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      sourceTab === "spotify"
+                        ? "bg-[#1db954] text-black"
+                        : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                    }`}
+                  >
+                    {t.tabSpotify}
+                  </button>
+                </div>
+              )}
+
+              {/* Playback controls */}
               <div className="flex justify-center gap-3 mb-3">
                 <button onClick={prevSong} className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl transition">⏮</button>
 
-                {/* BUG FIX #3: disable repeat for Spotify (iframe has no JS API) */}
+                {/* Repeat disabled when viewing Spotify (iframe has no JS API) */}
                 <button
-                  onClick={() => !isSpotify && setRepeat(!repeat)}
+                  onClick={() => !showingSpotify && setRepeat(!repeat)}
                   className={`px-4 py-2 rounded-xl transition ${
-                    isSpotify
+                    showingSpotify
                       ? "bg-gray-800 text-gray-600 cursor-not-allowed"
                       : repeat
                       ? "bg-purple-600"
                       : "bg-gray-700 hover:bg-gray-600"
                   }`}
-                  title={isSpotify ? t.spotifyRepeatNote : t.toggleRepeat}
-                  disabled={isSpotify}
+                  title={showingSpotify ? t.spotifyRepeatNote : t.toggleRepeat}
+                  disabled={showingSpotify}
                 >🔁</button>
 
                 <button onClick={nextSong} className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl transition">⏭</button>
               </div>
 
-              {currentSong.source === "local" ? (
+              {/* ── Players ── */}
+
+              {/* Local audio */}
+              {currentSong.source === "local" && (
                 <audio src={currentSong.url} controls autoPlay loop={repeat} className="w-full" />
-              ) : currentSong.source === "spotify" ? (
+              )}
+
+              {/* YouTube player */}
+              {(currentSong.source === "youtube" ||
+                (currentSong.source === "both" && sourceTab === "youtube")) &&
+                currentSong.videoId && (
+                <iframe
+                  key={`yt-${currentSong.videoId}`}
+                  className="w-full rounded-xl"
+                  height="200"
+                  src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
+                  allow="autoplay"
+                />
+              )}
+
+              {/* Spotify player */}
+              {(currentSong.source === "spotify" ||
+                (currentSong.source === "both" && sourceTab === "spotify")) &&
+                currentSong.spotifyEmbedUrl && (
                 <>
                   <iframe
+                    key={`sp-${currentSong.spotifyEmbedUrl}`}
                     className="w-full rounded-xl"
                     height="152"
                     src={currentSong.spotifyEmbedUrl}
                     allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
                     loading="lazy"
                   />
-                  {/* BUG FIX #3: hint that repeat is inside Spotify player */}
                   <p className="text-xs text-gray-500 text-center mt-2">{t.spotifyRepeatNote}</p>
                 </>
-              ) : (
-                <iframe
-                  className="w-full rounded-xl"
-                  height="200"
-                  src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
-                  allow="autoplay"
-                />
               )}
             </div>
           )}
@@ -595,7 +642,21 @@ export default function App() {
                     : "bg-gray-800 hover:bg-gray-700"
                 } ${dragIndex === i ? "opacity-30" : ""}`}
               >
-                {s.source === "youtube" && s.videoId ? (
+                {/* Thumbnail / icon */}
+                {s.source === "both" && s.videoId ? (
+                  // YouTube thumbnail with Spotify badge
+                  <div className="relative w-14 h-10 shrink-0">
+                    <img
+                      src={s.thumbnail || `https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
+                      alt=""
+                      className="w-full h-full object-cover rounded-lg"
+                      draggable={false}
+                    />
+                    <span className="absolute bottom-0 right-0 bg-[#1db954] text-black text-[9px] font-bold px-1 rounded-bl-lg rounded-tr-lg leading-tight">
+                      ♫
+                    </span>
+                  </div>
+                ) : s.source === "youtube" && s.videoId ? (
                   <img
                     src={s.thumbnail || `https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
                     alt=""
@@ -614,10 +675,21 @@ export default function App() {
 
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate leading-tight">{s.title}</p>
-                  <p className={`text-xs mt-0.5 capitalize ${
-                    s.source === "youtube" ? "text-red-400" :
-                    s.source === "spotify" ? "text-green-400" : "text-blue-400"
-                  }`}>{s.source}</p>
+                  {/* Source badges */}
+                  <div className="flex gap-1 mt-0.5">
+                    {(s.source === "youtube" || s.source === "both") && (
+                      <span className="text-[10px] text-red-400 font-medium">YouTube</span>
+                    )}
+                    {s.source === "both" && (
+                      <span className="text-[10px] text-gray-600">·</span>
+                    )}
+                    {(s.source === "spotify" || s.source === "both") && (
+                      <span className="text-[10px] text-green-400 font-medium">Spotify</span>
+                    )}
+                    {s.source === "local" && (
+                      <span className="text-[10px] text-blue-400 font-medium">local</span>
+                    )}
+                  </div>
                 </div>
 
                 {i === currentIndex && (
