@@ -18,6 +18,8 @@ export default function App() {
 
   const fileInputRef = useRef();
 
+  const active = playlists[currentPlaylist];
+
   // INSTALL
   useEffect(() => {
     const handler = (e) => {
@@ -49,9 +51,7 @@ export default function App() {
     });
   };
 
-  const active = playlists[currentPlaylist];
-
-  // LOAD (enhanced autosave)
+  // LOAD
   useEffect(() => {
     const saved = localStorage.getItem("library");
     const savedState = localStorage.getItem("playerState");
@@ -60,12 +60,14 @@ export default function App() {
 
     if (savedState) {
       const state = JSON.parse(savedState);
-      if (state.currentPlaylist !== undefined) setCurrentPlaylist(state.currentPlaylist);
-      if (state.currentIndex !== undefined) setCurrentIndex(state.currentIndex);
+      if (state.currentPlaylist !== undefined)
+        setCurrentPlaylist(state.currentPlaylist);
+      if (state.currentIndex !== undefined)
+        setCurrentIndex(state.currentIndex);
     }
   }, []);
 
-  // SAVE (autosave everything important)
+  // SAVE
   useEffect(() => {
     localStorage.setItem("library", JSON.stringify(playlists));
 
@@ -120,33 +122,30 @@ export default function App() {
     }
   };
 
-  // SEARCH (YouTube + Spotify fallback)
+  // 🔍 SEARCH (YouTube → Spotify fallback)
   const searchSong = async () => {
     if (!artist && !song) return;
 
     try {
       const q = `${artist} ${song}`;
 
-      // 🔴 Try YouTube first
-      const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+      // 🔴 YouTube first
+      let res = await fetch(`/search?q=${encodeURIComponent(q)}`);
       let data = await res.json();
+      let vid = data.items?.[0];
 
-      let vid = data.items?.find((v) => v.id?.videoId);
-
-      // 🟢 Fallback to Spotify
+      // 🟢 Spotify fallback
       if (!vid) {
         const spRes = await fetch(`/spotify?q=${encodeURIComponent(q)}`);
         const spData = await spRes.json();
-
         const track = spData.items?.[0];
 
         if (track) {
           const retry = await fetch(
-            `/search?q=${encodeURIComponent(track.artist + " " + track.title)}`
+            `/search?q=${encodeURIComponent(track.query)}`
           );
           const retryData = await retry.json();
-
-          vid = retryData.items?.find((v) => v.id?.videoId);
+          vid = retryData.items?.[0];
         }
       }
 
@@ -164,7 +163,7 @@ export default function App() {
     }
   };
 
-  // AI (with Spotify fallback)
+  // 🤖 AI (improved fallback chain)
   const generateAI = async () => {
     if (!vibe) return;
 
@@ -185,23 +184,23 @@ export default function App() {
       for (let s of songs) {
         let vid;
 
-        const res = await fetch(`/search?q=${encodeURIComponent(s)}`);
+        // 🔴 YouTube first
+        let res = await fetch(`/search?q=${encodeURIComponent(s)}`);
         let d = await res.json();
-        vid = d.items?.find((v) => v.id?.videoId);
+        vid = d.items?.[0];
 
-        // Spotify fallback
+        // 🟢 Spotify fallback
         if (!vid) {
           const spRes = await fetch(`/spotify?q=${encodeURIComponent(s)}`);
           const spData = await spRes.json();
-
           const track = spData.items?.[0];
 
           if (track) {
             const retry = await fetch(
-              `/search?q=${encodeURIComponent(track.artist + " " + track.title)}`
+              `/search?q=${encodeURIComponent(track.query)}`
             );
             const retryData = await retry.json();
-            vid = retryData.items?.find((v) => v.id?.videoId);
+            vid = retryData.items?.[0];
           }
         }
 
@@ -227,7 +226,6 @@ export default function App() {
     setPlaylists(updated);
   };
 
-  // MANUAL CONTROLS (safe)
   const nextSong = () => {
     if (!active.songs.length) return;
     setCurrentIndex((prev) => (prev + 1) % active.songs.length);
@@ -235,7 +233,9 @@ export default function App() {
 
   const prevSong = () => {
     if (!active.songs.length) return;
-    setCurrentIndex((prev) => (prev - 1 + active.songs.length) % active.songs.length);
+    setCurrentIndex(
+      (prev) => (prev - 1 + active.songs.length) % active.songs.length
+    );
   };
 
   return (
@@ -249,8 +249,6 @@ export default function App() {
             Playlist AI
           </h1>
         </div>
-
-        
 
         {/* HEADER */}
         <div className="flex justify-center gap-2 mb-6">
@@ -283,10 +281,7 @@ export default function App() {
           <button onClick={() => setRepeat(!repeat)} className={`p-3 rounded-xl ${repeat ? "bg-purple-600" : "bg-gray-700"}`}>🔁</button>
 
           {deferredPrompt && (
-            <button
-              onClick={installApp}
-              className="bg-purple-600 p-3 rounded-xl text-sm"
-            >
+            <button onClick={installApp} className="bg-purple-600 p-3 rounded-xl text-sm">
               Install
             </button>
           )}
@@ -303,21 +298,9 @@ export default function App() {
         {/* PLAYER */}
         {active.songs[currentIndex] && (
           <>
-            {/* CONTROLS */}
             <div className="flex justify-center gap-3 mt-4">
-              <button
-                onClick={prevSong}
-                className="bg-gray-700 px-4 py-2 rounded-xl"
-              >
-                ⏮
-              </button>
-
-              <button
-                onClick={nextSong}
-                className="bg-gray-700 px-4 py-2 rounded-xl"
-              >
-                ⏭
-              </button>
+              <button onClick={prevSong} className="bg-gray-700 px-4 py-2 rounded-xl">⏮</button>
+              <button onClick={nextSong} className="bg-gray-700 px-4 py-2 rounded-xl">⏭</button>
             </div>
 
             {active.songs[currentIndex].local ? (
@@ -338,11 +321,7 @@ export default function App() {
             )}
           </>
         )}
-
       </div>
     </div>
   );
 }
-
-
-
