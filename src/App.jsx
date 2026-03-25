@@ -121,44 +121,70 @@ export default function App() {
     }
   };
 
-  // 🔍 SEARCH (FIXED)
+  // Helper: search Spotify and return track with previewUrl
+  const spotifyFallback = async (q) => {
+    try {
+      const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(q)}`);
+      const spData = await spRes.json();
+      return spData.items?.[0] || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Helper: search YouTube
+  const youtubeSearch = async (q) => {
+    try {
+      const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      return data.items?.[0] || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Helper: full search with YouTube → Spotify → Spotify preview cascade
+  const findSong = async (q) => {
+    // 1. Try YouTube directly
+    let vid = await youtubeSearch(q);
+    if (vid) {
+      return { title: vid.snippet.title, videoId: vid.id.videoId };
+    }
+
+    // 2. Try Spotify for better metadata, then retry YouTube
+    const track = await spotifyFallback(q);
+    if (track) {
+      const retryQuery = track.query || `${track.artist} ${track.title}`;
+      vid = await youtubeSearch(retryQuery);
+      if (vid) {
+        return { title: vid.snippet.title, videoId: vid.id.videoId };
+      }
+
+      // 3. YouTube still failed — use Spotify 30s preview as final fallback
+      if (track.previewUrl) {
+        return {
+          title: `${track.artist} - ${track.title}`,
+          url: track.previewUrl,
+          local: true,
+          source: "spotify",
+        };
+      }
+    }
+
+    return null;
+  };
+
+  // 🔍 SEARCH
   const searchSong = async () => {
     if (!artist && !song) return;
 
     try {
       const q = `${artist} ${song}`;
+      const result = await findSong(q);
 
-      // 🔴 YouTube FIRST (FIXED)
-      let res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-      let data = await res.json();
-      let vid = data.items?.[0];
+      if (!result) return alert("No results found");
 
-      // 🟢 Spotify fallback (FIXED ROUTE + SAFE QUERY)
-      if (!vid) {
-        const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(q)}`);
-        const spData = await spRes.json();
-        const track = spData.items?.[0];
-
-        if (track) {
-          const retryQuery =
-            track.query || `${track.artist} ${track.title}`;
-
-          const retry = await fetch(
-            `/search?q=${encodeURIComponent(retryQuery)}`
-          );
-
-          const retryData = await retry.json();
-          vid = retryData.items?.[0];
-        }
-      }
-
-      if (!vid) return alert("No results");
-
-      addSong({
-        title: vid.snippet.title,
-        videoId: vid.id.videoId,
-      });
-
+      addSong(result);
       setArtist("");
       setSong("");
     } catch {
@@ -166,7 +192,7 @@ export default function App() {
     }
   };
 
-  // 🤖 AI (FIXED ROUTE)
+  // 🤖 AI
   const generateAI = async () => {
     if (!vibe) return;
 
@@ -182,37 +208,11 @@ export default function App() {
 
       if (!songs?.length) return alert("AI failed");
 
-      let results = [];
+      const results = [];
 
       for (let s of songs) {
-        let res = await fetch(`/search?q=${encodeURIComponent(s)}`);
-        let d = await res.json();
-        let vid = d.items?.[0];
-
-        if (!vid) {
-          const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(s)}`);
-          const spData = await spRes.json();
-          const track = spData.items?.[0];
-
-          if (track) {
-            const retryQuery =
-              track.query || `${track.artist} ${track.title}`;
-
-            const retry = await fetch(
-              `/search?q=${encodeURIComponent(retryQuery)}`
-            );
-
-            const retryData = await retry.json();
-            vid = retryData.items?.[0];
-          }
-        }
-
-        if (vid) {
-          results.push({
-            title: vid.snippet.title,
-            videoId: vid.id.videoId,
-          });
-        }
+        const result = await findSong(s);
+        if (result) results.push(result);
       }
 
       const updated = [...playlists];
@@ -292,8 +292,11 @@ export default function App() {
 
         {/* SONG LIST */}
         {active.songs.map((s, i) => (
-          <div key={i} onClick={() => setCurrentIndex(i)} className="flex justify-between bg-gray-900 p-3 mb-2 rounded-xl">
-            <div>{s.title}</div>
+          <div key={i} onClick={() => setCurrentIndex(i)} className="flex justify-between bg-gray-900 p-3 mb-2 rounded-xl cursor-pointer hover:bg-gray-800">
+            <div className="flex items-center gap-2">
+              {s.source === "spotify" && <span className="text-green-400 text-xs">🎵</span>}
+              <span>{s.title}</span>
+            </div>
             <button onClick={(e) => { e.stopPropagation(); removeSong(i); }}>❌</button>
           </div>
         ))}
@@ -307,13 +310,18 @@ export default function App() {
             </div>
 
             {active.songs[currentIndex].local ? (
-              <audio
-                src={active.songs[currentIndex].url}
-                controls
-                autoPlay
-                loop={repeat}
-                className="w-full mt-4"
-              />
+              <div className="mt-4">
+                {active.songs[currentIndex].source === "spotify" && (
+                  <div className="text-center text-xs text-green-400 mb-1">🎵 Spotify Preview (30s)</div>
+                )}
+                <audio
+                  src={active.songs[currentIndex].url}
+                  controls
+                  autoPlay
+                  loop={repeat}
+                  className="w-full"
+                />
+              </div>
             ) : (
               <iframe
                 className="w-full mt-4 rounded-xl"

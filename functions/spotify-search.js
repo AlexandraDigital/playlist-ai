@@ -52,6 +52,8 @@ export async function onRequestGet(context) {
         artist: t.artists[0].name,
         title: t.name,
         query: `${t.artists[0].name} ${t.name} official audio`,
+        previewUrl: t.preview_url || null,
+        spotifyUrl: t.external_urls?.spotify || null,
       })) || [];
 
     return new Response(JSON.stringify({ items }), {
