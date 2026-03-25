@@ -52,7 +52,8 @@ export async function onRequestGet(context) {
         artist: t.artists[0].name,
         title: t.name,
         spotifyId: t.id,
-        query: `${t.artists[0].name} ${t.name} official audio`,
+        // Do NOT append "official audio" here — search.js already adds it
+        query: `${t.artists[0].name} ${t.name}`,
       })) || [];
 
     return new Response(JSON.stringify({ items }), {

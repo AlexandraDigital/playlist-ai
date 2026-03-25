@@ -4,6 +4,7 @@ export default function App() {
   const [vibe, setVibe] = useState("");
   const [artist, setArtist] = useState("");
   const [song, setSong] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const [playlists, setPlaylists] = useState([
     { name: "My Playlist", songs: [] },
@@ -77,6 +78,13 @@ export default function App() {
     localStorage.setItem("playerState", JSON.stringify(state));
   }, [playlists, currentPlaylist, currentIndex]);
 
+  // CLAMP currentIndex when songs array shrinks
+  useEffect(() => {
+    if (active.songs.length > 0 && currentIndex >= active.songs.length) {
+      setCurrentIndex(active.songs.length - 1);
+    }
+  }, [active.songs.length]);
+
   const addSong = (s) => {
     const updated = [...playlists];
     updated[currentPlaylist].songs.unshift(s);
@@ -87,6 +95,14 @@ export default function App() {
     const updated = [...playlists];
     updated[currentPlaylist].songs.splice(i, 1);
     setPlaylists(updated);
+
+    // Keep currentIndex pointing at the same song
+    if (i < currentIndex) {
+      setCurrentIndex((prev) => Math.max(0, prev - 1));
+    } else if (i === currentIndex) {
+      setCurrentIndex(0);
+    }
+    // i > currentIndex: no change needed
   };
 
   const newPlaylist = () => {
@@ -158,7 +174,9 @@ export default function App() {
   // SEARCH
   const searchSong = async () => {
     if (!artist && !song) return;
+    if (loading) return;
 
+    setLoading(true);
     try {
       const result = await resolveTrack(`${artist} ${song}`);
       if (!result) return alert("No results found");
@@ -167,13 +185,17 @@ export default function App() {
       setSong("");
     } catch {
       alert("Search failed");
+    } finally {
+      setLoading(false);
     }
   };
 
   // AI
   const generateAI = async () => {
     if (!vibe) return;
+    if (loading) return;
 
+    setLoading(true);
     try {
       const res = await fetch("/ai", {
         method: "POST",
@@ -196,8 +218,11 @@ export default function App() {
       const updated = [...playlists];
       updated[currentPlaylist].songs = results;
       setPlaylists(updated);
+      setCurrentIndex(0);
     } catch {
       alert("AI error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -205,6 +230,7 @@ export default function App() {
     const updated = [...playlists];
     updated[currentPlaylist].songs = [];
     setPlaylists(updated);
+    setCurrentIndex(0);
   };
 
   const nextSong = () => {
@@ -243,22 +269,52 @@ export default function App() {
         </div>
 
         {/* VIBE */}
-        <input value={vibe} onChange={(e) => setVibe(e.target.value)} placeholder="Type a vibe..." className="w-full p-3 mb-2 bg-gray-900 rounded-xl" />
-        <button onClick={generateAI} className="w-full bg-purple-600 p-3 mb-4 rounded-xl">Generate AI Playlist</button>
+        <input
+          value={vibe}
+          onChange={(e) => setVibe(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && generateAI()}
+          placeholder="Type a vibe..."
+          className="w-full p-3 mb-2 bg-gray-900 rounded-xl"
+        />
+        <button
+          onClick={generateAI}
+          disabled={loading}
+          className="w-full bg-purple-600 p-3 mb-4 rounded-xl disabled:opacity-50"
+        >
+          {loading ? "Generating\u2026" : "Generate AI Playlist"}
+        </button>
 
         {/* SEARCH */}
-        <input value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="Artist" className="w-full p-3 mb-2 bg-gray-900 rounded-xl" />
-        <input value={song} onChange={(e) => setSong(e.target.value)} placeholder="Song" className="w-full p-3 mb-2 bg-gray-900 rounded-xl" />
+        <input
+          value={artist}
+          onChange={(e) => setArtist(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && searchSong()}
+          placeholder="Artist"
+          className="w-full p-3 mb-2 bg-gray-900 rounded-xl"
+        />
+        <input
+          value={song}
+          onChange={(e) => setSong(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && searchSong()}
+          placeholder="Song"
+          className="w-full p-3 mb-2 bg-gray-900 rounded-xl"
+        />
 
         <div className="flex gap-2 mb-4">
-          <button onClick={searchSong} className="flex-1 bg-purple-600 p-3 rounded-xl">Add Song</button>
+          <button
+            onClick={searchSong}
+            disabled={loading}
+            className="flex-1 bg-purple-600 p-3 rounded-xl disabled:opacity-50"
+          >
+            {loading ? "\u2026" : "Add Song"}
+          </button>
           <button onClick={() => fileInputRef.current.click()} className="bg-gray-700 px-3 rounded-xl">\u2b06\ufe0f</button>
         </div>
 
         <input ref={fileInputRef} type="file" accept="audio/*" onChange={upload} hidden />
 
         {/* ACTIONS */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className={`grid ${deferredPrompt ? "grid-cols-3" : "grid-cols-2"} gap-2 mb-4`}>
           <button onClick={clearPlaylist} className="bg-gray-700 p-3 rounded-xl">Clear</button>
           <button onClick={() => setRepeat(!repeat)} className={`p-3 rounded-xl ${repeat ? "bg-purple-600" : "bg-gray-700"}`}>\ud83d\udd01</button>
           {deferredPrompt && (
@@ -271,7 +327,9 @@ export default function App() {
           <div
             key={i}
             onClick={() => setCurrentIndex(i)}
-            className="flex justify-between items-center bg-gray-900 p-3 mb-2 rounded-xl cursor-pointer hover:bg-gray-800"
+            className={`flex justify-between items-center p-3 mb-2 rounded-xl cursor-pointer ${
+              i === currentIndex ? "bg-purple-800" : "bg-gray-900 hover:bg-gray-800"
+            }`}
           >
             <div className="flex items-center gap-2">
               {s.spotifyId && (
