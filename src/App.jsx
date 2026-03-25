@@ -306,13 +306,19 @@ export default function App() {
 
     // Handle Spotify result — functions return 200 with optional error field
     let spotifyTrack = null;
+    let spotifyError = null;
     if (spotifyResult.status === "fulfilled") {
       spotifyTrack = spotifyResult.value.track || null;
-      // spotifyResult.value.error is ignored — Spotify failing is soft, song just has no Spotify tab
+      spotifyError = spotifyResult.value.error || null; // capture error for diagnostics
+    } else {
+      spotifyError = spotifyResult.reason?.message || "Spotify network error";
     }
-    // If Spotify rejected (network error), spotifyTrack stays null
 
-    if (!vid && !spotifyTrack) return null;
+    if (!vid && !spotifyTrack) {
+      // Both failed — throw Spotify error so callers can show it to the user
+      if (spotifyError) throw new Error(`Spotify: ${spotifyError}`);
+      return null;
+    }
 
     const source = vid && spotifyTrack ? "both" : vid ? "youtube" : "spotify";
     return {
@@ -352,14 +358,21 @@ export default function App() {
         return;
       }
       const results = [];
+      let firstError = null;
       // Fetch YouTube + Spotify in parallel per song, songs processed sequentially to avoid rate limits
       for (const s of songs) {
         try {
           const result = await fetchBoth(s);
           if (result) results.push(result);
-        } catch {}
+        } catch (e) {
+          if (!firstError) firstError = e; // capture first error for diagnostics
+        }
       }
-      if (!results.length) { alert(t.aiNoFind); setLoading(false); return; }
+      if (!results.length) {
+        alert(firstError ? `${t.searchFailed}${firstError.message}` : t.aiNoFind);
+        setLoading(false);
+        return;
+      }
       const updated = [...playlists];
       updated[currentPlaylist] = { ...updated[currentPlaylist], songs: results };
       setPlaylists(updated);
