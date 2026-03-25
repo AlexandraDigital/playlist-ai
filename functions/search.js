@@ -1,42 +1,16 @@
 export async function onRequestGet(context) {
-  const keys = [
-    context.env.YOUTUBE_API_KEY_1,
-    context.env.YOUTUBE_API_KEY_2,
-  ].filter(Boolean);
+  const url = new URL(context.request.url);
+  const q = url.searchParams.get("q");
 
-  try {
-    const url = new URL(context.request.url);
-    const q = url.searchParams.get("q");
+  const key = context.env.YOUTUBE_API_KEY_1;
 
-    if (!q) {
-      return new Response(JSON.stringify({ items: [] }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(q)}&key=${key}`
+  );
 
-    for (let key of keys) {
-      const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(q + " official audio")}&key=${key}`
-      );
+  const data = await res.json();
 
-      if (!res.ok) continue;
-
-      const data = await res.json();
-
-      const valid =
-        data.items?.filter((i) => i.id?.videoId) || [];
-
-      if (valid.length) {
-        return new Response(JSON.stringify({ items: valid }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    return new Response(JSON.stringify({ items: [] }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch {
-    return new Response(JSON.stringify({ items: [] }), { status: 500 });
-  }
+  return new Response(JSON.stringify(data), {
+    headers: { "Content-Type": "application/json" },
+  });
 }
