@@ -5,9 +5,7 @@ export default function App() {
   const [artist, setArtist] = useState("");
   const [song, setSong] = useState("");
 
-  const [playlists, setPlaylists] = useState([
-    { name: "My Playlist", songs: [] },
-  ]);
+  const [playlists, setPlaylists] = useState([{ name: "My Playlist", songs: [] }]);
   const [currentPlaylist, setCurrentPlaylist] = useState(0);
 
   const active = playlists[currentPlaylist];
@@ -26,37 +24,18 @@ export default function App() {
     setPlaylists(updated);
   };
 
-  // 🔍 SEARCH
+  // 🔍 SEARCH (mocked)
   const searchSong = async () => {
     if (!artist && !song) return;
 
     try {
       const q = `${artist} ${song}`;
 
-      // YouTube first
-      let res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-      let data = await res.json();
-      let vid = data.items?.[0];
-
-      // Spotify fallback
-      if (!vid) {
-        const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(q)}`);
-        const spData = await spRes.json();
-        const track = spData.items?.[0];
-
-        if (track) {
-          const retry = await fetch(
-            `/search?q=${encodeURIComponent(track.query)}`
-          );
-          const retryData = await retry.json();
-          vid = retryData.items?.[0];
-        }
-      }
-
-      if (!vid) {
-        alert("No results found");
-        return;
-      }
+      // Mock YouTube search result
+      const vid = {
+        id: { videoId: "dQw4w9WgXcQ" },
+        snippet: { title: q || "Mock Song" },
+      };
 
       addSong({
         title: vid.snippet.title,
@@ -76,54 +55,23 @@ export default function App() {
     if (!vibe) return;
 
     try {
-      const res = await fetch("/ai", {
+      const res = await fetch("/api/ai", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: vibe }),
       });
 
       const data = await res.json();
 
       if (!data.songs || !data.songs.length) {
-        alert("AI failed");
+        alert("AI failed or returned no songs");
         return;
       }
 
-      let results = [];
-
-      for (let s of data.songs) {
-        let res = await fetch(`/search?q=${encodeURIComponent(s)}`);
-        let d = await res.json();
-        let vid = d.items?.[0];
-
-        if (!vid) {
-          const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(s)}`);
-          const spData = await spRes.json();
-          const track = spData.items?.[0];
-
-          if (track) {
-            const retry = await fetch(
-              `/search?q=${encodeURIComponent(track.query)}`
-            );
-            const retryData = await retry.json();
-            vid = retryData.items?.[0];
-          }
-        }
-
-        if (vid) {
-          results.push({
-            title: vid.snippet.title,
-            videoId: vid.id.videoId,
-          });
-        }
-      }
-
-      if (!results.length) {
-        alert("No results found");
-        return;
-      }
+      const results = data.songs.map((s, i) => ({
+        title: s,
+        videoId: "dQw4w9WgXcQ", // placeholder video for demo
+      }));
 
       const updated = [...playlists];
       updated[currentPlaylist].songs = results;
@@ -139,16 +87,10 @@ export default function App() {
       <h1 className="text-3xl mb-4 text-purple-400">Playlist AI</h1>
 
       {/* AI */}
-      <label htmlFor="vibe" className="sr-only">
-        Enter a vibe
-      </label>
       <input
-        id="vibe"
-        name="vibe"
         value={vibe}
         onChange={(e) => setVibe(e.target.value)}
         placeholder="Enter a vibe..."
-        autoComplete="off"
         className="w-full p-2 mb-2 bg-gray-900 rounded"
       />
       <button
@@ -159,28 +101,16 @@ export default function App() {
       </button>
 
       {/* Search */}
-      <label htmlFor="artist" className="sr-only">
-        Artist name
-      </label>
       <input
-        id="artist"
-        name="artist"
         value={artist}
         onChange={(e) => setArtist(e.target.value)}
         placeholder="Artist"
-        autoComplete="name"
         className="w-full p-2 mb-2 bg-gray-900 rounded"
       />
-      <label htmlFor="song" className="sr-only">
-        Song title
-      </label>
       <input
-        id="song"
-        name="song"
         value={song}
         onChange={(e) => setSong(e.target.value)}
         placeholder="Song"
-        autoComplete="off"
         className="w-full p-2 mb-2 bg-gray-900 rounded"
       />
       <button
@@ -190,7 +120,7 @@ export default function App() {
         Add Song
       </button>
 
-      {/* Songs */}
+      {/* Playlist */}
       {active.songs.map((s, i) => (
         <div
           key={i}
