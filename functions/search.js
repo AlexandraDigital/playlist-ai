@@ -4,14 +4,8 @@ export async function onRequestGet(context) {
     const q = url.searchParams.get("q");
 
     if (!q) {
-      return new Response(JSON.stringify({ error: "Missing query" }), {
-        status: 400,
-      });
-    }
-
-    if (!context.env.YOUTUBE_API_KEY) {
-      return new Response(JSON.stringify({ error: "Missing API key" }), {
-        status: 500,
+      return new Response(JSON.stringify({ items: [] }), {
+        headers: { "Content-Type": "application/json" },
       });
     }
 
@@ -23,21 +17,15 @@ export async function onRequestGet(context) {
 
     const data = await res.json();
 
-    console.log("YT:", data);
+    // ✅ filter ONLY valid videos
+    const validItems =
+      data.items?.filter((item) => item.id?.videoId) || [];
 
-    if (data.error) {
-      return new Response(JSON.stringify({ error: data.error.message }), {
-        status: 500,
-      });
-    }
-
-    return new Response(JSON.stringify(data), {
+    return new Response(JSON.stringify({ items: validItems }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("SEARCH ERROR:", e);
-
-    return new Response(JSON.stringify({ error: e.message }), {
+    return new Response(JSON.stringify({ items: [], error: e.message }), {
       status: 500,
     });
   }
