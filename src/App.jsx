@@ -138,6 +138,7 @@ export default function App() {
   const [sourceTab, setSourceTab] = useState("youtube");
   const [ytQuotaExceeded, setYtQuotaExceeded] = useState(false);
   const ytQuotaRef = useRef(false); // ref so fetchBoth sees it immediately inside loops
+  const ytErrorCountRef = useRef(0); // consecutive YouTube errors → auto-disable YouTube
 
   const fileInputRef = useRef();
   const renameInputRef = useRef();
@@ -262,29 +263,48 @@ export default function App() {
     const res = await fetch(url, options);
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
-      throw new Error(`The ${url} endpoint returned an HTML page. Make sure Cloudflare Pages functions are deployed and API keys are set.`);
+      throw new Error(`Endpoint ${url} returned non-JSON. Check Cloudflare Pages deployment and API keys.`);
     }
-    return res.json();
+    const json = await res.json();
+    // Throw on HTTP errors so callers can catch them properly
+    if (!res.ok) {
+      throw new Error(json.error || `HTTP ${res.status} from ${url}`);
+    }
+    return json;
   };
 
   // Fetch YouTube and Spotify in parallel, return a combined song object
   const fetchBoth = async (query) => {
-    const [ytData, spotifyData] = await Promise.all([
+    const [ytResult, spotifyResult] = await Promise.allSettled([
       // Skip YouTube entirely this session if quota was already hit
       ytQuotaRef.current
         ? Promise.resolve({ items: [] })
-        : safeFetchJSON(`/search?q=${encodeURIComponent(query)}`).catch(() => ({ items: [] })),
-      safeFetchJSON(`/spotify?q=${encodeURIComponent(query)}`).catch((e) => ({ error: e.message })),
+        : safeFetchJSON(`/search?q=${encodeURIComponent(query)}`),
+      safeFetchJSON(`/spotify?q=${encodeURIComponent(query)}`),
     ]);
 
-    // Detect YouTube quota exceeded — mark it so all future calls skip YouTube
-    if (ytData.error && /quota/i.test(ytData.error)) {
-      ytQuotaRef.current = true;
-      setYtQuotaExceeded(true);
+    // Handle YouTube result
+    let vid = null;
+    if (ytResult.status === "fulfilled") {
+      vid = ytResult.value.items?.[0] || null;
+      ytErrorCountRef.current = 0; // reset on success
+    } else {
+      // YouTube threw — check if it looks like quota/rate-limit (multiple error wordings)
+      const errMsg = ytResult.reason?.message || "";
+      const isQuota = /quota|limit exceeded|daily|forbidden|permission|rate/i.test(errMsg);
+      ytErrorCountRef.current += 1;
+      if (isQuota || ytErrorCountRef.current >= 3) {
+        ytQuotaRef.current = true;
+        setYtQuotaExceeded(true);
+      }
     }
 
-    const vid = ytData.items?.[0] || null;
-    const spotifyTrack = spotifyData?.track || null;
+    // Handle Spotify result
+    let spotifyTrack = null;
+    if (spotifyResult.status === "fulfilled") {
+      spotifyTrack = spotifyResult.value.track || null;
+    }
+    // If Spotify rejected, spotifyTrack stays null — song will be YouTube-only or skipped
 
     if (!vid && !spotifyTrack) return null;
 
