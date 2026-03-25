@@ -34,6 +34,7 @@ export async function onRequestGet(context) {
       data.tracks?.items.map((t) => ({
         artist: t.artists[0].name,
         title: t.name,
+        query: `${t.artists[0].name} ${t.name} official audio`, // 🔥 improved
       })) || [];
 
     return new Response(JSON.stringify({ items }), {
