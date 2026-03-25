@@ -14,8 +14,13 @@ export async function onRequestPost(context) {
           model: "llama3-70b-8192",
           messages: [
             {
+              role: "system",
+              content:
+                "Return ONLY a list of songs in this exact format: Artist - Song. No extra text.",
+            },
+            {
               role: "user",
-              content: `Give 10 songs for: ${query}. Format: Artist - Song`,
+              content: `Give 10 songs for: ${query}`,
             },
           ],
         }),
@@ -24,15 +29,25 @@ export async function onRequestPost(context) {
 
     const data = await res.json();
 
-    const content = data.choices?.[0]?.message?.content || "";
+    const text = data.choices?.[0]?.message?.content || "";
 
-    const songs = content
+    const songs = text
       .split("\n")
-      .map((l) => l.replace(/^\d+\.\s*/, "").trim())
-      .filter((l) => l.includes(" - "));
+      .map((line) =>
+        line
+          .replace(/^\d+\.\s*/, "")
+          .replace(/["']/g, "")
+          .trim()
+      )
+      .filter((line) => line.includes(" - "));
 
-    return new Response(JSON.stringify({ songs }));
-  } catch {
-    return new Response(JSON.stringify({ songs: [] }), { status: 500 });
+    return new Response(JSON.stringify({ songs }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ songs: [], error: e.message }),
+      { status: 500 }
+    );
   }
 }
