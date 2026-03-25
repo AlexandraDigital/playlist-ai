@@ -130,7 +130,7 @@ export default function App() {
       const q = `${artist} ${song}`;
 
       // 🔴 YouTube first
-      let res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+      let res = await fetch("/spotify-search?q=${encodeURIComponent(q)}`);
       let data = await res.json();
       let vid = data.items?.[0];
 
