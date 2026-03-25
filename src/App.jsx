@@ -433,6 +433,8 @@ export default function App() {
           <div className="bg-gray-900 rounded-2xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">{t.aiGenerate}</p>
             <input
+              id="vibe-input"
+              name="vibe"
               value={vibe}
               onChange={(e) => setVibe(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && generateAI()}
@@ -452,12 +454,16 @@ export default function App() {
           <div className="bg-gray-900 rounded-2xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">{t.addSong}</p>
             <input
+              id="artist-input"
+              name="artist"
               value={artist}
               onChange={(e) => setArtist(e.target.value)}
               placeholder={t.artistPlaceholder}
               className="w-full p-3 mb-2 bg-gray-800 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-600"
             />
             <input
+              id="song-input"
+              name="song"
               value={song}
               onChange={(e) => setSong(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && searchSong()}
