@@ -1,6 +1,6 @@
-export async function onRequestGet({ url, env }) {
-  const q = url.searchParams.get("q");
-  if (!q) return new Response(JSON.stringify({ items: [] }));
+export async function onRequestGet({ request, env }) {
+  const q = new URL(request.url).searchParams.get("q");
+  if (!q) return new Response(JSON.stringify({ items: [] }), { headers: { "Content-Type": "application/json" } });
 
   try {
     // 🔴 1. Try YouTube first
@@ -11,7 +11,7 @@ export async function onRequestGet({ url, env }) {
     let vid = ytData.items?.[0];
 
     if (vid?.id?.videoId) {
-      return new Response(JSON.stringify({ items: [vid] }));
+      return new Response(JSON.stringify({ items: [vid] }), { headers: { "Content-Type": "application/json" } });
     }
 
     // 🟢 2. Get Spotify token
@@ -30,7 +30,7 @@ export async function onRequestGet({ url, env }) {
     const token = tokenData.access_token;
 
     if (!token) {
-      return new Response(JSON.stringify({ items: [] }));
+      return new Response(JSON.stringify({ items: [] }), { headers: { "Content-Type": "application/json" } });
     }
 
     // 🟢 3. Search Spotify
@@ -47,23 +47,23 @@ export async function onRequestGet({ url, env }) {
     const track = spData.tracks?.items?.[0];
 
     if (!track) {
-      return new Response(JSON.stringify({ items: [] }));
+      return new Response(JSON.stringify({ items: [] }), { headers: { "Content-Type": "application/json" } });
     }
 
-    // 🔁 4. Retry YouTube with better query
+    // 🔁 4. Retry YouTube with better query (use same key name)
     const retryQuery = `${track.name} ${track.artists[0].name}`;
 
     const retryRes = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(retryQuery)}&key=${env.YT_API_KEY}&maxResults=1`
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(retryQuery)}&key=${env.YOUTUBE_API_KEY}&maxResults=1`
     );
 
     const retryData = await retryRes.json();
 
-    return new Response(JSON.stringify({ items: retryData.items || [] }));
+    return new Response(JSON.stringify({ items: retryData.items || [] }), { headers: { "Content-Type": "application/json" } });
   } catch (e) {
     return new Response(
       JSON.stringify({ items: [], error: e.message }),
-      { status: 500 }
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

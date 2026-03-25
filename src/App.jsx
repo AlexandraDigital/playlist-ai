@@ -40,13 +40,19 @@ export default function App() {
 
   // Load saved playlists
   useEffect(() => {
-    const saved = localStorage.getItem("library");
-    const savedState = localStorage.getItem("playerState");
-    if (saved) setPlaylists(JSON.parse(saved));
-    if (savedState) {
-      const state = JSON.parse(savedState);
-      if (state.currentPlaylist !== undefined) setCurrentPlaylist(state.currentPlaylist);
-      if (state.currentIndex !== undefined) setCurrentIndex(state.currentIndex);
+    try {
+      const saved = localStorage.getItem("library");
+      const savedState = localStorage.getItem("playerState");
+      if (saved) setPlaylists(JSON.parse(saved));
+      if (savedState) {
+        const state = JSON.parse(savedState);
+        if (state.currentPlaylist !== undefined) setCurrentPlaylist(state.currentPlaylist);
+        if (state.currentIndex !== undefined) setCurrentIndex(state.currentIndex);
+      }
+    } catch {
+      // Corrupted localStorage data — reset gracefully
+      localStorage.removeItem("library");
+      localStorage.removeItem("playerState");
     }
   }, []);
 
@@ -58,7 +64,13 @@ export default function App() {
 
   // Playlist functions
   const addSong = (s) => { const updated = [...playlists]; updated[currentPlaylist].songs.unshift(s); setPlaylists(updated); };
-  const removeSong = (i) => { const updated = [...playlists]; updated[currentPlaylist].songs.splice(i, 1); setPlaylists(updated); };
+  const removeSong = (i) => {
+    const updated = [...playlists];
+    updated[currentPlaylist].songs.splice(i, 1);
+    setPlaylists(updated);
+    // Clamp currentIndex so it doesn't go out of bounds after removal
+    setCurrentIndex((prev) => Math.min(prev, Math.max(0, updated[currentPlaylist].songs.length - 1)));
+  };
   const newPlaylist = () => { const name = prompt("Name your playlist:") || "New Playlist"; const updated = [...playlists, { name, songs: [] }]; setPlaylists(updated); setCurrentPlaylist(updated.length - 1); };
   const deletePlaylist = () => { if (playlists.length === 1) return alert("Can't delete last playlist"); const updated = playlists.filter((_, i) => i !== currentPlaylist); setPlaylists(updated); setCurrentPlaylist(0); };
   const renamePlaylist = () => { const name = prompt("Rename playlist:"); if (!name) return; const updated = [...playlists]; updated[currentPlaylist].name = name; setPlaylists(updated); };
@@ -100,10 +112,11 @@ export default function App() {
       }
 
       const updated = [...playlists]; updated[currentPlaylist].songs = results; setPlaylists(updated);
+      setCurrentIndex(0);
     } catch { alert("AI error"); }
   };
 
-  const clearPlaylist = () => { const updated = [...playlists]; updated[currentPlaylist].songs = []; setPlaylists(updated); };
+  const clearPlaylist = () => { const updated = [...playlists]; updated[currentPlaylist].songs = []; setPlaylists(updated); setCurrentIndex(0); };
   const nextSong = () => { if (!active.songs.length) return; setCurrentIndex((prev) => (prev + 1) % active.songs.length); };
   const prevSong = () => { if (!active.songs.length) return; setCurrentIndex((prev) => (prev - 1 + active.songs.length) % active.songs.length); };
 
@@ -142,7 +155,7 @@ export default function App() {
         </div>
 
         {active.songs.map((s, i) => (
-          <div key={i} onClick={() => setCurrentIndex(i)} className="flex justify-between bg-gray-900 p-3 mb-2 rounded-xl">
+          <div key={`${s.videoId || s.url}-${i}`} onClick={() => setCurrentIndex(i)} className="flex justify-between bg-gray-900 p-3 mb-2 rounded-xl cursor-pointer">
             <div>{s.title}</div>
             <button onClick={e => { e.stopPropagation(); removeSong(i); }}>❌</button>
           </div>
@@ -157,7 +170,12 @@ export default function App() {
             {active.songs[currentIndex].local ? (
               <audio src={active.songs[currentIndex].url} controls autoPlay loop={repeat} className="w-full mt-4" />
             ) : (
-              <iframe className="w-full mt-4 rounded-xl" height="200" src={`https://www.youtube.com/embed/${active.songs[currentIndex].videoId}?autoplay=1&loop=${repeat ? 1 : 0}`} allow="autoplay" />
+              <iframe
+                className="w-full mt-4 rounded-xl"
+                height="200"
+                src={`https://www.youtube.com/embed/${active.songs[currentIndex].videoId}?autoplay=1&loop=${repeat ? 1 : 0}&playlist=${active.songs[currentIndex].videoId}`}
+                allow="autoplay"
+              />
             )}
           </>
         )}
