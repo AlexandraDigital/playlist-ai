@@ -9,7 +9,7 @@ export async function onRequestGet(context) {
       });
     }
 
-    const key = context.env.YOUTUBE_API_KEY_1;
+    const key = context.env.YOUTUBE_API_KEY;
 
     // 🔥 improved query (more reliable results)
     const searchQuery = `${q} official audio`;
