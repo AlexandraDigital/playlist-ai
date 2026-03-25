@@ -51,6 +51,7 @@ export async function onRequestGet(context) {
       data.tracks?.items.map((t) => ({
         artist: t.artists[0].name,
         title: t.name,
+        spotifyId: t.id,
         query: `${t.artists[0].name} ${t.name} official audio`,
       })) || [];
 

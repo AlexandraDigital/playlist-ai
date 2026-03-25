@@ -121,44 +121,48 @@ export default function App() {
     }
   };
 
-  // 🔍 SEARCH (FIXED)
+  // Helper: try YouTube first, fall back to Spotify embed (full song)
+  const resolveTrack = async (q) => {
+    // 1. Try YouTube directly
+    let res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+    let data = await res.json();
+    let vid = data.items?.[0];
+    if (vid) {
+      return { title: vid.snippet.title, videoId: vid.id.videoId };
+    }
+
+    // 2. Get Spotify metadata + track ID
+    const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(q)}`);
+    const spData = await spRes.json();
+    const track = spData.items?.[0];
+
+    if (!track) return null;
+
+    // 3. Retry YouTube with Spotify's enriched query
+    const retryQuery = track.query || `${track.artist} ${track.title}`;
+    const retry = await fetch(`/search?q=${encodeURIComponent(retryQuery)}`);
+    const retryData = await retry.json();
+    vid = retryData.items?.[0];
+
+    if (vid) {
+      return { title: vid.snippet.title, videoId: vid.id.videoId };
+    }
+
+    // 4. YouTube fully failed — use Spotify embed (full song playback)
+    return {
+      title: `${track.artist} \u2013 ${track.title}`,
+      spotifyId: track.spotifyId,
+    };
+  };
+
+  // SEARCH
   const searchSong = async () => {
     if (!artist && !song) return;
 
     try {
-      const q = `${artist} ${song}`;
-
-      // 🔴 YouTube FIRST (FIXED)
-      let res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-      let data = await res.json();
-      let vid = data.items?.[0];
-
-      // 🟢 Spotify fallback (FIXED ROUTE + SAFE QUERY)
-      if (!vid) {
-        const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(q)}`);
-        const spData = await spRes.json();
-        const track = spData.items?.[0];
-
-        if (track) {
-          const retryQuery =
-            track.query || `${track.artist} ${track.title}`;
-
-          const retry = await fetch(
-            `/search?q=${encodeURIComponent(retryQuery)}`
-          );
-
-          const retryData = await retry.json();
-          vid = retryData.items?.[0];
-        }
-      }
-
-      if (!vid) return alert("No results");
-
-      addSong({
-        title: vid.snippet.title,
-        videoId: vid.id.videoId,
-      });
-
+      const result = await resolveTrack(`${artist} ${song}`);
+      if (!result) return alert("No results found");
+      addSong(result);
       setArtist("");
       setSong("");
     } catch {
@@ -166,7 +170,7 @@ export default function App() {
     }
   };
 
-  // 🤖 AI (FIXED ROUTE)
+  // AI
   const generateAI = async () => {
     if (!vibe) return;
 
@@ -182,37 +186,11 @@ export default function App() {
 
       if (!songs?.length) return alert("AI failed");
 
-      let results = [];
+      const results = [];
 
       for (let s of songs) {
-        let res = await fetch(`/search?q=${encodeURIComponent(s)}`);
-        let d = await res.json();
-        let vid = d.items?.[0];
-
-        if (!vid) {
-          const spRes = await fetch(`/spotify-search?q=${encodeURIComponent(s)}`);
-          const spData = await spRes.json();
-          const track = spData.items?.[0];
-
-          if (track) {
-            const retryQuery =
-              track.query || `${track.artist} ${track.title}`;
-
-            const retry = await fetch(
-              `/search?q=${encodeURIComponent(retryQuery)}`
-            );
-
-            const retryData = await retry.json();
-            vid = retryData.items?.[0];
-          }
-        }
-
-        if (vid) {
-          results.push({
-            title: vid.snippet.title,
-            videoId: vid.id.videoId,
-          });
-        }
+        const result = await resolveTrack(s);
+        if (result) results.push(result);
       }
 
       const updated = [...playlists];
@@ -241,13 +219,15 @@ export default function App() {
     );
   };
 
+  const currentSong = active.songs[currentIndex];
+
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
       <div className="w-full max-w-xl">
 
         {/* LOGO */}
         <div className="flex flex-col items-center mb-6 animate-bounce">
-          <div className="text-5xl">🎧</div>
+          <div className="text-5xl">\ud83c\udfa7</div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-400 to-purple-600 bg-clip-text text-transparent">
             Playlist AI
           </h1>
@@ -259,7 +239,7 @@ export default function App() {
             {active.name}
           </button>
           <button onClick={newPlaylist} className="bg-purple-600 px-3 py-2 rounded-xl">+</button>
-          <button onClick={deletePlaylist} className="bg-purple-600 px-3 py-2 rounded-xl">🗑</button>
+          <button onClick={deletePlaylist} className="bg-purple-600 px-3 py-2 rounded-xl">\ud83d\uddd1</button>
         </div>
 
         {/* VIBE */}
@@ -272,7 +252,7 @@ export default function App() {
 
         <div className="flex gap-2 mb-4">
           <button onClick={searchSong} className="flex-1 bg-purple-600 p-3 rounded-xl">Add Song</button>
-          <button onClick={() => fileInputRef.current.click()} className="bg-gray-700 px-3 rounded-xl">⬆️</button>
+          <button onClick={() => fileInputRef.current.click()} className="bg-gray-700 px-3 rounded-xl">\u2b06\ufe0f</button>
         </div>
 
         <input ref={fileInputRef} type="file" accept="audio/*" onChange={upload} hidden />
@@ -280,46 +260,61 @@ export default function App() {
         {/* ACTIONS */}
         <div className="grid grid-cols-3 gap-2 mb-4">
           <button onClick={clearPlaylist} className="bg-gray-700 p-3 rounded-xl">Clear</button>
-
-          <button onClick={() => setRepeat(!repeat)} className={`p-3 rounded-xl ${repeat ? "bg-purple-600" : "bg-gray-700"}`}>🔁</button>
-
+          <button onClick={() => setRepeat(!repeat)} className={`p-3 rounded-xl ${repeat ? "bg-purple-600" : "bg-gray-700"}`}>\ud83d\udd01</button>
           {deferredPrompt && (
-            <button onClick={installApp} className="bg-purple-600 p-3 rounded-xl text-sm">
-              Install
-            </button>
+            <button onClick={installApp} className="bg-purple-600 p-3 rounded-xl text-sm">Install</button>
           )}
         </div>
 
         {/* SONG LIST */}
         {active.songs.map((s, i) => (
-          <div key={i} onClick={() => setCurrentIndex(i)} className="flex justify-between bg-gray-900 p-3 mb-2 rounded-xl">
-            <div>{s.title}</div>
-            <button onClick={(e) => { e.stopPropagation(); removeSong(i); }}>❌</button>
+          <div
+            key={i}
+            onClick={() => setCurrentIndex(i)}
+            className="flex justify-between items-center bg-gray-900 p-3 mb-2 rounded-xl cursor-pointer hover:bg-gray-800"
+          >
+            <div className="flex items-center gap-2">
+              {s.spotifyId && (
+                <span className="text-green-400 text-xs font-bold">\u2665 Spotify</span>
+              )}
+              <span className="truncate">{s.title}</span>
+            </div>
+            <button onClick={(e) => { e.stopPropagation(); removeSong(i); }}>\u274c</button>
           </div>
         ))}
 
         {/* PLAYER */}
-        {active.songs[currentIndex] && (
+        {currentSong && (
           <>
             <div className="flex justify-center gap-3 mt-4">
-              <button onClick={prevSong} className="bg-gray-700 px-4 py-2 rounded-xl">⏮</button>
-              <button onClick={nextSong} className="bg-gray-700 px-4 py-2 rounded-xl">⏭</button>
+              <button onClick={prevSong} className="bg-gray-700 px-4 py-2 rounded-xl">\u23ee</button>
+              <button onClick={nextSong} className="bg-gray-700 px-4 py-2 rounded-xl">\u23ed</button>
             </div>
 
-            {active.songs[currentIndex].local ? (
+            {currentSong.local ? (
               <audio
-                src={active.songs[currentIndex].url}
+                src={currentSong.url}
                 controls
                 autoPlay
                 loop={repeat}
                 className="w-full mt-4"
               />
+            ) : currentSong.spotifyId ? (
+              <iframe
+                key={currentSong.spotifyId}
+                className="w-full mt-4 rounded-xl"
+                src={`https://open.spotify.com/embed/track/${currentSong.spotifyId}?utm_source=generator&autoplay=1`}
+                height="152"
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                loading="lazy"
+              />
             ) : (
               <iframe
+                key={currentSong.videoId}
                 className="w-full mt-4 rounded-xl"
                 height="200"
-                src={`https://www.youtube.com/embed/${active.songs[currentIndex].videoId}?autoplay=1&loop=${repeat ? 1 : 0}`}
-                allow="autoplay"
+                src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
+                allow="autoplay; encrypted-media"
               />
             )}
           </>
