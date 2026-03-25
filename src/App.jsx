@@ -136,6 +136,8 @@ export default function App() {
   const [dragOverIndex, setDragOverIndex] = useState(null);
   // "youtube" | "spotify" — which player tab is active for the current song
   const [sourceTab, setSourceTab] = useState("youtube");
+  const [ytQuotaExceeded, setYtQuotaExceeded] = useState(false);
+  const ytQuotaRef = useRef(false); // ref so fetchBoth sees it immediately inside loops
 
   const fileInputRef = useRef();
   const renameInputRef = useRef();
@@ -268,9 +270,18 @@ export default function App() {
   // Fetch YouTube and Spotify in parallel, return a combined song object
   const fetchBoth = async (query) => {
     const [ytData, spotifyData] = await Promise.all([
-      safeFetchJSON(`/search?q=${encodeURIComponent(query)}`).catch(() => ({ items: [] })),
-      safeFetchJSON(`/spotify?q=${encodeURIComponent(query)}`).catch(() => null),
+      // Skip YouTube entirely this session if quota was already hit
+      ytQuotaRef.current
+        ? Promise.resolve({ items: [] })
+        : safeFetchJSON(`/search?q=${encodeURIComponent(query)}`).catch(() => ({ items: [] })),
+      safeFetchJSON(`/spotify?q=${encodeURIComponent(query)}`).catch((e) => ({ error: e.message })),
     ]);
+
+    // Detect YouTube quota exceeded — mark it so all future calls skip YouTube
+    if (ytData.error && /quota/i.test(ytData.error)) {
+      ytQuotaRef.current = true;
+      setYtQuotaExceeded(true);
+    }
 
     const vid = ytData.items?.[0] || null;
     const spotifyTrack = spotifyData?.track || null;
@@ -351,6 +362,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
+      {/* YouTube quota warning banner */}
+      {ytQuotaExceeded && (
+        <div className="bg-yellow-900/60 border-b border-yellow-700 text-yellow-300 text-sm text-center px-4 py-2 flex items-center justify-center gap-2">
+          <span>⚠️</span>
+          <span>YouTube daily quota reached — searching Spotify only until midnight (Pacific Time)</span>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-900">
         <div className="flex items-center gap-3">
