@@ -120,16 +120,36 @@ export default function App() {
     }
   };
 
-  // SEARCH (YouTube via backend)
+  // SEARCH (YouTube + Spotify fallback)
   const searchSong = async () => {
     if (!artist && !song) return;
 
     try {
       const q = `${artist} ${song}`;
-      const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
 
-      const vid = data.items?.find((v) => v.id?.videoId);
+      // 🔴 Try YouTube first
+      const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+      let data = await res.json();
+
+      let vid = data.items?.find((v) => v.id?.videoId);
+
+      // 🟢 Fallback to Spotify
+      if (!vid) {
+        const spRes = await fetch(`/spotify?q=${encodeURIComponent(q)}`);
+        const spData = await spRes.json();
+
+        const track = spData.items?.[0];
+
+        if (track) {
+          const retry = await fetch(
+            `/search?q=${encodeURIComponent(track.artist + " " + track.title)}`
+          );
+          const retryData = await retry.json();
+
+          vid = retryData.items?.find((v) => v.id?.videoId);
+        }
+      }
+
       if (!vid) return alert("No results");
 
       addSong({
@@ -144,7 +164,7 @@ export default function App() {
     }
   };
 
-  // AI
+  // AI (with Spotify fallback)
   const generateAI = async () => {
     if (!vibe) return;
 
@@ -163,9 +183,27 @@ export default function App() {
       let results = [];
 
       for (let s of songs) {
+        let vid;
+
         const res = await fetch(`/search?q=${encodeURIComponent(s)}`);
-        const d = await res.json();
-        const vid = d.items?.find((v) => v.id?.videoId);
+        let d = await res.json();
+        vid = d.items?.find((v) => v.id?.videoId);
+
+        // Spotify fallback
+        if (!vid) {
+          const spRes = await fetch(`/spotify?q=${encodeURIComponent(s)}`);
+          const spData = await spRes.json();
+
+          const track = spData.items?.[0];
+
+          if (track) {
+            const retry = await fetch(
+              `/search?q=${encodeURIComponent(track.artist + " " + track.title)}`
+            );
+            const retryData = await retry.json();
+            vid = retryData.items?.find((v) => v.id?.videoId);
+          }
+        }
 
         if (vid) {
           results.push({
@@ -305,5 +343,6 @@ export default function App() {
     </div>
   );
 }
+
 
 
