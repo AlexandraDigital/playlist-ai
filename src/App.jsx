@@ -4,41 +4,31 @@ export default function App() {
   const [vibe, setVibe] = useState("");
   const [artist, setArtist] = useState("");
   const [song, setSong] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const [playlists, setPlaylists] = useState([{ name: "My Playlist", songs: [] }]);
   const [currentPlaylist, setCurrentPlaylist] = useState(0);
-
   const [currentIndex, setCurrentIndex] = useState(0);
   const [repeat, setRepeat] = useState(false);
-
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
   const fileInputRef = useRef();
   const active = playlists[currentPlaylist];
 
-  // Install prompt
   useEffect(() => {
-    const handler = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
+    const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  const installApp = () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-  };
+  const installApp = () => { if (!deferredPrompt) return; deferredPrompt.prompt(); };
 
-  // Upload local audio
   const upload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    addSong({ title: file.name, url: URL.createObjectURL(file), local: true });
+    addSong({ title: file.name, url: URL.createObjectURL(file), source: "local" });
   };
 
-  // Load saved playlists
   useEffect(() => {
     try {
       const saved = localStorage.getItem("library");
@@ -50,25 +40,21 @@ export default function App() {
         if (state.currentIndex !== undefined) setCurrentIndex(state.currentIndex);
       }
     } catch {
-      // Corrupted localStorage data — reset gracefully
       localStorage.removeItem("library");
       localStorage.removeItem("playerState");
     }
   }, []);
 
-  // Save playlists
   useEffect(() => {
     localStorage.setItem("library", JSON.stringify(playlists));
     localStorage.setItem("playerState", JSON.stringify({ currentPlaylist, currentIndex }));
   }, [playlists, currentPlaylist, currentIndex]);
 
-  // Playlist functions
   const addSong = (s) => { const updated = [...playlists]; updated[currentPlaylist].songs.unshift(s); setPlaylists(updated); };
   const removeSong = (i) => {
     const updated = [...playlists];
     updated[currentPlaylist].songs.splice(i, 1);
     setPlaylists(updated);
-    // Clamp currentIndex so it doesn't go out of bounds after removal
     setCurrentIndex((prev) => Math.min(prev, Math.max(0, updated[currentPlaylist].songs.length - 1)));
   };
   const newPlaylist = () => { const name = prompt("Name your playlist:") || "New Playlist"; const updated = [...playlists, { name, songs: [] }]; setPlaylists(updated); setCurrentPlaylist(updated.length - 1); };
@@ -76,49 +62,96 @@ export default function App() {
   const renamePlaylist = () => { const name = prompt("Rename playlist:"); if (!name) return; const updated = [...playlists]; updated[currentPlaylist].name = name; setPlaylists(updated); };
   const switchPlaylist = () => { const names = playlists.map((p, i) => `${i + 1}. ${p.name}`).join("\n"); const choice = prompt(`Select playlist:\n${names}`); const index = parseInt(choice) - 1; if (index >= 0 && index < playlists.length) { setCurrentPlaylist(index); setCurrentIndex(0); } };
 
-  // Search song
+  // Spotify fallback search
+  const trySpotify = async (query) => {
+    try {
+      const res = await fetch(`/spotify?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (data.track) return { title: data.track.title, spotifyEmbedUrl: data.track.embedUrl, source: "spotify" };
+    } catch {}
+    return null;
+  };
+
+  // Search song — YouTube first, Spotify fallback
   const searchSong = async () => {
     if (!artist && !song) return;
     try {
       const q = `${artist} ${song}`;
-      let res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-      let data = await res.json();
+      const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
       const vid = data.items?.[0];
-      if (!vid) return alert("No results");
-      addSong({ title: vid.snippet.title, videoId: vid.id.videoId });
+      if (vid) {
+        addSong({ title: vid.snippet.title, videoId: vid.id.videoId, source: "youtube" });
+      } else {
+        const spotifyTrack = await trySpotify(q);
+        if (spotifyTrack) {
+          addSong(spotifyTrack);
+        } else {
+          alert("No results found on YouTube or Spotify");
+          return;
+        }
+      }
       setArtist(""); setSong("");
     } catch { alert("Search failed"); }
   };
 
-  // AI playlist
+  // AI playlist — YouTube first, Spotify fallback per song
   const generateAI = async () => {
     if (!vibe) return;
+    setLoading(true);
     try {
-      const res = await fetch(`/ai`, {
+      const res = await fetch("/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: vibe }),
       });
       const data = await res.json();
       const songs = data.songs;
-      if (!songs?.length) return alert("AI failed");
 
-      let results = [];
-      for (let s of songs) {
-        let res = await fetch(`/search?q=${encodeURIComponent(s)}`);
-        let d = await res.json();
-        const vid = d.items?.[0];
-        if (vid) results.push({ title: vid.snippet.title, videoId: vid.id.videoId });
+      if (!songs?.length) {
+        alert(data.error || "AI returned no songs — make sure GROQ_API_KEY is set in Cloudflare Pages → Settings → Environment Variables");
+        setLoading(false);
+        return;
       }
 
-      const updated = [...playlists]; updated[currentPlaylist].songs = results; setPlaylists(updated);
+      const results = [];
+      for (const s of songs) {
+        // Try YouTube first
+        try {
+          const r = await fetch(`/search?q=${encodeURIComponent(s)}`);
+          const d = await r.json();
+          const vid = d.items?.[0];
+          if (vid) {
+            results.push({ title: vid.snippet.title, videoId: vid.id.videoId, source: "youtube" });
+            continue;
+          }
+        } catch {}
+        // Spotify fallback
+        const spotifyTrack = await trySpotify(s);
+        if (spotifyTrack) results.push(spotifyTrack);
+      }
+
+      if (!results.length) {
+        alert("Couldn't find any songs. Check that YOUTUBE_API_KEY or SPOTIFY credentials are set.");
+        setLoading(false);
+        return;
+      }
+
+      const updated = [...playlists];
+      updated[currentPlaylist].songs = results;
+      setPlaylists(updated);
       setCurrentIndex(0);
-    } catch { alert("AI error"); }
+    } catch (e) {
+      alert("AI error: " + (e.message || "Unknown error"));
+    }
+    setLoading(false);
   };
 
   const clearPlaylist = () => { const updated = [...playlists]; updated[currentPlaylist].songs = []; setPlaylists(updated); setCurrentIndex(0); };
   const nextSong = () => { if (!active.songs.length) return; setCurrentIndex((prev) => (prev + 1) % active.songs.length); };
   const prevSong = () => { if (!active.songs.length) return; setCurrentIndex((prev) => (prev - 1 + active.songs.length) % active.songs.length); };
+
+  const currentSong = active.songs[currentIndex];
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
@@ -137,7 +170,9 @@ export default function App() {
         </div>
 
         <input value={vibe} onChange={e => setVibe(e.target.value)} placeholder="Type a vibe..." className="w-full p-3 mb-2 bg-gray-900 rounded-xl" />
-        <button onClick={generateAI} className="w-full bg-purple-600 p-3 mb-4 rounded-xl">Generate AI Playlist</button>
+        <button onClick={generateAI} disabled={loading} className="w-full bg-purple-600 p-3 mb-4 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed">
+          {loading ? "⏳ Generating..." : "Generate AI Playlist"}
+        </button>
 
         <input value={artist} onChange={e => setArtist(e.target.value)} placeholder="Artist" className="w-full p-3 mb-2 bg-gray-900 rounded-xl" />
         <input value={song} onChange={e => setSong(e.target.value)} placeholder="Song" className="w-full p-3 mb-2 bg-gray-900 rounded-xl" />
@@ -155,25 +190,46 @@ export default function App() {
         </div>
 
         {active.songs.map((s, i) => (
-          <div key={`${s.videoId || s.url}-${i}`} onClick={() => setCurrentIndex(i)} className="flex justify-between bg-gray-900 p-3 mb-2 rounded-xl cursor-pointer">
-            <div>{s.title}</div>
-            <button onClick={e => { e.stopPropagation(); removeSong(i); }}>❌</button>
+          <div
+            key={`${s.videoId || s.spotifyEmbedUrl || s.url}-${i}`}
+            onClick={() => setCurrentIndex(i)}
+            className={`flex justify-between items-center p-3 mb-2 rounded-xl cursor-pointer ${
+              i === currentIndex ? "bg-purple-900 border border-purple-500" : "bg-gray-900"
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {s.source === "spotify" && <span className="text-green-400 text-xs shrink-0">🟢</span>}
+              {s.source === "youtube" && <span className="text-red-400 text-xs shrink-0">🔴</span>}
+              {s.source === "local" && <span className="text-blue-400 text-xs shrink-0">📁</span>}
+              <span className="truncate">{s.title}</span>
+            </div>
+            <button onClick={e => { e.stopPropagation(); removeSong(i); }} className="shrink-0 ml-2">❌</button>
           </div>
         ))}
 
-        {active.songs[currentIndex] && (
+        {currentSong && (
           <>
             <div className="flex justify-center gap-3 mt-4">
               <button onClick={prevSong} className="bg-gray-700 px-4 py-2 rounded-xl">⏮</button>
               <button onClick={nextSong} className="bg-gray-700 px-4 py-2 rounded-xl">⏭</button>
             </div>
-            {active.songs[currentIndex].local ? (
-              <audio src={active.songs[currentIndex].url} controls autoPlay loop={repeat} className="w-full mt-4" />
+            {currentSong.source === "local" ? (
+              <audio src={currentSong.url} controls autoPlay loop={repeat} className="w-full mt-4" />
+            ) : currentSong.source === "spotify" ? (
+              <iframe
+                className="w-full mt-4 rounded-xl"
+                height="152"
+                src={currentSong.spotifyEmbedUrl}
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                loading="lazy"
+              />
             ) : (
               <iframe
                 className="w-full mt-4 rounded-xl"
                 height="200"
-                src={`https://www.youtube.com/embed/${active.songs[currentIndex].videoId}?autoplay=1&loop=${repeat ? 1 : 0}&playlist=${active.songs[currentIndex].videoId}`}
+                src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&loop=${
+                  repeat ? 1 : 0
+                }&playlist=${currentSong.videoId}`}
                 allow="autoplay"
               />
             )}
