@@ -69,7 +69,7 @@ export default function App() {
     if (!artist && !song) return;
     try {
       const q = `${artist} ${song}`;
-      let res = await fetch(`/functions/ai.jsq=${encodeURIComponent(q)}`)
+      let res = await fetch(`/functions/search?q=${encodeURIComponent(q)}`);
       let data = await res.json();
       const vid = data.items?.[0];
       if (!vid) return alert("No results");
@@ -82,18 +82,18 @@ export default function App() {
   const generateAI = async () => {
     if (!vibe) return;
     try {
-      const res = await fetch(`/functions/ai.js`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ query: vibe }),
-});
+      const res = await fetch(`/functions/ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: vibe }),
+      });
       const data = await res.json();
       const songs = data.songs;
       if (!songs?.length) return alert("AI failed");
 
       let results = [];
       for (let s of songs) {
-        let res = await fetch(`/functions/ai.js q=${encodeURIComponent(s)}`);
+        let res = await fetch(`/functions/search?q=${encodeURIComponent(s)}`);
         let d = await res.json();
         const vid = d.items?.[0];
         if (vid) results.push({ title: vid.snippet.title, videoId: vid.id.videoId });
@@ -165,5 +165,3 @@ export default function App() {
     </div>
   );
 }
-
-      
