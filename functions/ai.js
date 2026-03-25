@@ -21,7 +21,7 @@ export async function onRequest({ request, env }) {
         JSON.stringify({
           songs: [],
           error:
-            "GROQ_API_KEY is not set. Go to Cloudflare Pages → Settings → Environment Variables and add GROQ_API_KEY.",
+            "GROQ_API_KEY is not set. Go to Cloudflare Pages \u2192 Settings \u2192 Environment Variables and add GROQ_API_KEY.",
         }),
         {
           status: 500,
@@ -57,7 +57,7 @@ export async function onRequest({ request, env }) {
           },
           {
             role: "user",
-            content: `Give 10 songs for: ${query}`,
+            content: `Give 20 songs for: ${query}`,
           },
         ],
       }),
