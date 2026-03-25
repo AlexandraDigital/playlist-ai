@@ -1,4 +1,19 @@
-export async function onRequestPost({ request, env }) {
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function onRequest({ request, env }) {
+  // Handle CORS preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: CORS_HEADERS });
+  }
+
   try {
     // Get user input
     const { query } = await request.json();
@@ -6,7 +21,7 @@ export async function onRequestPost({ request, env }) {
     if (!query) {
       return new Response(JSON.stringify({ songs: [], error: "No query provided" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
 
@@ -50,7 +65,7 @@ export async function onRequestPost({ request, env }) {
       .filter((line) => line.includes(" - ")); // ensure correct format
 
     return new Response(JSON.stringify({ songs }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   } catch (e) {
     return new Response(
@@ -60,7 +75,7 @@ export async function onRequestPost({ request, env }) {
       }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       }
     );
   }
