@@ -41,6 +41,11 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 Video/Audio",
     uploadFile: "📎 Upload File",
     openInSpotify: "Open in Spotify App",
+    autoplay: "∞ Auto",
+    share: "🔗 Share",
+    shareCopied: "Link copied! Share it with anyone.",
+    shareImport: (name, count) => `Import shared playlist "${name}" (${count} songs)?`,
+    shareLocalNote: "Note: local files can't be shared.",
   },
   es: {
     appName: "Playlist AI",
@@ -82,6 +87,11 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 Video/Audio",
     uploadFile: "📎 Subir Archivo",
     openInSpotify: "Abrir en App de Spotify",
+    autoplay: "∞ Auto",
+    share: "🔗 Compartir",
+    shareCopied: "¡Enlace copiado! Compártelo con alguien.",
+    shareImport: (name, count) => `¿Importar playlist "${name}" (${count} canciones)?`,
+    shareLocalNote: "Nota: los archivos locales no se pueden compartir.",
   },
   zh: {
     appName: "Playlist AI",
@@ -123,6 +133,11 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 视频/音频",
     uploadFile: "📎 上传文件",
     openInSpotify: "在 Spotify App 中打开",
+    autoplay: "∞ 自动",
+    share: "🔗 分享",
+    shareCopied: "链接已复制！可以分享给任何人。",
+    shareImport: (name, count) => `导入共享歌单"${name}"（${count}首歌曲）？`,
+    shareLocalNote: "注意：本地文件无法分享。",
   },
 };
 
@@ -157,6 +172,9 @@ export default function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [repeat, setRepeat] = useState(false);
+  const [autoplay, setAutoplay] = useState(() => {
+    try { return localStorage.getItem("autoplay") === "true"; } catch { return false; }
+  });
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -167,6 +185,8 @@ export default function App() {
   const [ytQuotaExceeded, setYtQuotaExceeded] = useState(false);
   const ytQuotaRef = useRef(false);
   const ytErrorCountRef = useRef(0);
+  const autoplayRef = useRef(false);
+  const nextSongRef = useRef(null);
   // Used to force-remount iframes (to trigger autoplay)
   const [playerKey, setPlayerKey] = useState(0);
 
@@ -190,6 +210,12 @@ export default function App() {
     localStorage.setItem("lang", lang);
   }, [lang]);
 
+  // Keep autoplayRef in sync + persist
+  useEffect(() => {
+    autoplayRef.current = autoplay;
+    try { localStorage.setItem("autoplay", autoplay ? "true" : "false"); } catch {}
+  }, [autoplay]);
+
   const [appInstalled, setAppInstalled] = useState(() => {
     try {
       return window.matchMedia("(display-mode: standalone)").matches;
@@ -208,6 +234,54 @@ export default function App() {
       window.removeEventListener("appinstalled", installedHandler);
     };
   }, []);
+
+  // nextSong ref so postMessage handler always has latest version
+  useEffect(() => {
+    nextSongRef.current = nextSong;
+  });
+
+  // Autoplay: listen for YouTube "ended" + SoundCloud "SOUND_FINISHED" via postMessage
+  useEffect(() => {
+    const handleMessage = (e) => {
+      if (!autoplayRef.current) return;
+      try {
+        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (!data) return;
+        // YouTube IFrame API: state 0 = ended
+        if (data.event === "onStateChange" && data.info === 0) {
+          nextSongRef.current?.();
+        }
+        // SoundCloud Widget API
+        if (data.soundcloud === true && data.method === "SOUND_FINISHED") {
+          nextSongRef.current?.();
+        }
+      } catch {}
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  // Check for shared playlist in URL hash on mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#share=")) return;
+    try {
+      const encoded = hash.slice(7);
+      const data = JSON.parse(atob(encoded));
+      if (data?.name && Array.isArray(data?.songs)) {
+        const t = TRANSLATIONS[localStorage.getItem("lang") || "en"];
+        if (window.confirm(t.shareImport(data.name, data.songs.length))) {
+          setPlaylists((prev) => {
+            const updated = [...prev, data];
+            setCurrentPlaylist(updated.length - 1);
+            setCurrentIndex(0);
+            return updated;
+          });
+        }
+      }
+    } catch {}
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []); // eslint-disable-line
 
   const installApp = async () => {
     try {
@@ -487,6 +561,33 @@ export default function App() {
     setCurrentIndex(0);
   };
 
+  const sharePlaylist = async () => {
+    const hasLocal = active.songs.some((s) => s.localFileUrl);
+    const shareable = {
+      name: active.name,
+      songs: active.songs
+        .filter((s) => !s.localFileUrl)
+        .map(({ title, videoId, thumbnail, spotifyEmbedUrl, soundcloudUrl, source }) => ({
+          title, videoId, thumbnail, spotifyEmbedUrl, soundcloudUrl, source,
+        })),
+    };
+    const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(shareable))));
+    const url = `${window.location.origin}${window.location.pathname}#share=${encoded}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: active.name, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        alert(t.shareCopied + (hasLocal ? "\n\n" + t.shareLocalNote : ""));
+      }
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        // Fallback: show URL in prompt
+        prompt(t.shareCopied, url);
+      }
+    }
+  };
+
   const nextSong = () => {
     if (!active.songs.length) return;
     setCurrentIndex((prev) => (prev + 1) % active.songs.length);
@@ -752,6 +853,14 @@ export default function App() {
                 >🔁</button>
 
                 <button
+                  onClick={() => setAutoplay((a) => !a)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold transition ${
+                    autoplay ? "bg-purple-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                  }`}
+                  title="Autoplay next song"
+                >∞</button>
+
+                <button
                   onClick={nextSong}
                   className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl transition"
                 >⏭</button>
@@ -822,6 +931,7 @@ export default function App() {
                     style={{ maxHeight: "300px" }}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
+                    onEnded={() => { if (autoplay && !repeat) nextSong(); }}
                   />
                 ) : (
                   <audio
@@ -833,6 +943,7 @@ export default function App() {
                     className="w-full mt-2"
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
+                    onEnded={() => { if (autoplay && !repeat) nextSong(); }}
                   />
                 )
               )}
@@ -843,7 +954,7 @@ export default function App() {
                   key={`yt-${playerKey}`}
                   className="w-full rounded-xl"
                   height="200"
-                  src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
+                  src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&enablejsapi=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
                   allow="autoplay; encrypted-media"
                 />
               )}
@@ -904,6 +1015,11 @@ export default function App() {
                 className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm font-bold transition"
                 title={t.newPlaylist}
               >+</button>
+              <button
+                onClick={sharePlaylist}
+                className="bg-gray-700 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm transition"
+                title={t.share}
+              >🔗</button>
               <button
                 onClick={deletePlaylist}
                 className="bg-gray-700 hover:bg-red-900 px-3 py-1 rounded-lg text-sm transition"
