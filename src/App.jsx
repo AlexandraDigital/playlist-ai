@@ -190,13 +190,36 @@ export default function App() {
     localStorage.setItem("lang", lang);
   }, [lang]);
 
+  const [appInstalled, setAppInstalled] = useState(() =>
+    window.matchMedia("(display-mode: standalone)").matches
+  );
+
   useEffect(() => {
-    const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
-    window.addEventListener("beforeinstallprompt", handler);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    const promptHandler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
+    const installedHandler = () => setAppInstalled(true);
+    window.addEventListener("beforeinstallprompt", promptHandler);
+    window.addEventListener("appinstalled", installedHandler);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", promptHandler);
+      window.removeEventListener("appinstalled", installedHandler);
+    };
   }, []);
 
-  const installApp = () => { if (!deferredPrompt) return; deferredPrompt.prompt(); };
+  const installApp = async () => {
+    if (deferredPrompt) {
+      await deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") setAppInstalled(true);
+      setDeferredPrompt(null);
+    } else {
+      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
+      if (isIOS) {
+        alert("To install Playlist AI:\n\n1. Tap the Share button (□↑) at the bottom of Safari\n2. Scroll down and tap \'Add to Home Screen\'\n3. Tap \'Add\'");
+      } else {
+        alert("To install Playlist AI:\n\n1. Open this page in Chrome\n2. Tap the menu (⋮) in the top right\n3. Tap \'Add to Home Screen\'");
+      }
+    }
+  };
 
   const upload = (e) => {
     const file = e.target.files[0];
@@ -843,7 +866,7 @@ export default function App() {
             <button onClick={clearPlaylist} className="flex-1 bg-gray-800 hover:bg-gray-700 p-2 rounded-xl text-sm transition">
               {t.clear}
             </button>
-            {deferredPrompt && (
+            {!appInstalled && (
               <button onClick={installApp} className="flex-1 bg-purple-700 hover:bg-purple-600 p-2 rounded-xl text-sm transition">
                 {t.install}
               </button>
