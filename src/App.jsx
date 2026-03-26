@@ -14,7 +14,6 @@ const TRANSLATIONS = {
     nowPlaying: "🎵 Now Playing",
     clear: "🗑 Clear",
     install: "📲 Install",
-    installed: "✓ Installed",
     noSongs: "No songs yet — generate or add some!",
     songs: (n) => `${n} song${n !== 1 ? "s" : ""}`,
     autosaved: "Autosaved",
@@ -42,13 +41,6 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 Video/Audio",
     uploadFile: "📎 Upload File",
     openInSpotify: "Open in Spotify App",
-    installModalTitle: "Install Playlist AI",
-    installModalClose: "Close",
-    installSteps: [
-      { platform: "Chrome / Android", icon: "🤖", steps: "Tap the ⋮ menu → \"Add to Home Screen\"" },
-      { platform: "Safari / iOS", icon: "🍎", steps: "Tap the Share button ↑ → \"Add to Home Screen\"" },
-      { platform: "Edge / Desktop", icon: "💻", steps: "Click the install icon in the address bar" },
-    ],
   },
   es: {
     appName: "Playlist AI",
@@ -63,7 +55,6 @@ const TRANSLATIONS = {
     nowPlaying: "🎵 Reproduciendo",
     clear: "🗑 Borrar",
     install: "📲 Instalar",
-    installed: "✓ Instalada",
     noSongs: "Sin canciones — ¡genera o agrega algunas!",
     songs: (n) => `${n} canción${n !== 1 ? "es" : ""}`,
     autosaved: "Guardado automático",
@@ -91,13 +82,6 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 Video/Audio",
     uploadFile: "📎 Subir Archivo",
     openInSpotify: "Abrir en App de Spotify",
-    installModalTitle: "Instalar Playlist AI",
-    installModalClose: "Cerrar",
-    installSteps: [
-      { platform: "Chrome / Android", icon: "🤖", steps: "Toca el menú ⋮ → \"Agregar a pantalla de inicio\"" },
-      { platform: "Safari / iOS", icon: "🍎", steps: "Toca el botón Compartir ↑ → \"Agregar a pantalla de inicio\"" },
-      { platform: "Edge / Escritorio", icon: "💻", steps: "Haz clic en el ícono de instalación en la barra de direcciones" },
-    ],
   },
   zh: {
     appName: "Playlist AI",
@@ -112,7 +96,6 @@ const TRANSLATIONS = {
     nowPlaying: "🎵 正在播放",
     clear: "🗑 清空",
     install: "📲 安装",
-    installed: "✓ 已安装",
     noSongs: "暂无歌曲 — 生成或添加一些吧！",
     songs: (n) => `${n} 首歌曲`,
     autosaved: "已自动保存",
@@ -140,13 +123,6 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 视频/音频",
     uploadFile: "📎 上传文件",
     openInSpotify: "在 Spotify App 中打开",
-    installModalTitle: "安装 Playlist AI",
-    installModalClose: "关闭",
-    installSteps: [
-      { platform: "Chrome / 安卓", icon: "🤖", steps: "点击 ⋮ 菜单 → \"添加到主屏幕\"" },
-      { platform: "Safari / iOS", icon: "🍎", steps: "点击分享按钮 ↑ → \"添加到主屏幕\"" },
-      { platform: "Edge / 桌面", icon: "💻", steps: "点击地址栏中的安装图标" },
-    ],
   },
 };
 
@@ -182,8 +158,6 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [repeat, setRepeat] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [showInstallModal, setShowInstallModal] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [dragIndex, setDragIndex] = useState(null);
@@ -204,7 +178,8 @@ export default function App() {
   // When song changes: pick best tab (Spotify > SoundCloud > YouTube) + start playing
   useEffect(() => {
     const s = playlists[currentPlaylist]?.songs[currentIndex];
-    if (s?.soundcloudUrl) setSourceTab("soundcloud");
+    if (s?.localFileUrl) setSourceTab("local");
+    else if (s?.soundcloudUrl) setSourceTab("soundcloud");
     else if (s?.spotifyEmbedUrl) setSourceTab("spotify");
     else setSourceTab("youtube");
     setIsPlaying(true);
@@ -215,39 +190,13 @@ export default function App() {
     localStorage.setItem("lang", lang);
   }, [lang]);
 
-  // Detect if already running as an installed PWA
-  useEffect(() => {
-    if (window.matchMedia("(display-mode: standalone)").matches) {
-      setIsInstalled(true);
-    }
-  }, []);
-
-  // Capture the beforeinstallprompt event for native install
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  // Mark as installed after user completes install
-  useEffect(() => {
-    const handler = () => { setIsInstalled(true); setDeferredPrompt(null); };
-    window.addEventListener("appinstalled", handler);
-    return () => window.removeEventListener("appinstalled", handler);
-  }, []);
-
-  const installApp = async () => {
-    if (deferredPrompt) {
-      // Native install prompt — triggers real "Add to Home Screen" dialog
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === "accepted") setIsInstalled(true);
-      setDeferredPrompt(null);
-    } else {
-      // Fallback: show step-by-step modal (iOS Safari, etc.)
-      setShowInstallModal(true);
-    }
-  };
+  const installApp = () => { if (!deferredPrompt) return; deferredPrompt.prompt(); };
 
   const upload = (e) => {
     const file = e.target.files[0];
@@ -527,20 +476,12 @@ export default function App() {
   const togglePlay = () => {
     const current = active.songs[currentIndex];
     if (!current) return;
-
-    if (current.source === "local" && audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    } else {
-      if (!isPlaying) {
-        setPlayerKey((k) => k + 1);
-      }
-      setIsPlaying(!isPlaying);
+    // Local files: just toggle state — the native video/audio controls handle playback
+    // Other sources: remount iframe to trigger autoplay
+    if (!isPlaying && current.source !== "local") {
+      setPlayerKey((k) => k + 1);
     }
+    setIsPlaying(!isPlaying);
   };
 
   const currentSong = active.songs[currentIndex];
@@ -575,32 +516,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
-      {/* Install Instructions Modal */}
-      {showInstallModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-700">
-            <h2 className="text-lg font-bold mb-4 text-center">{t.installModalTitle}</h2>
-            <div className="flex flex-col gap-3 mb-5">
-              {t.installSteps.map((step) => (
-                <div key={step.platform} className="flex items-start gap-3 bg-gray-800 rounded-xl p-3">
-                  <span className="text-2xl shrink-0">{step.icon}</span>
-                  <div>
-                    <p className="text-xs font-bold text-purple-300 mb-0.5">{step.platform}</p>
-                    <p className="text-xs text-gray-300 leading-snug">{step.steps}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button
-              onClick={() => setShowInstallModal(false)}
-              className="w-full bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl font-semibold text-sm transition"
-            >
-              {t.installModalClose}
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* YouTube quota warning banner */}
       {ytQuotaExceeded && (
         <div className="bg-yellow-900/60 border-b border-yellow-700 text-yellow-300 text-sm text-center px-4 py-2 flex items-center justify-center gap-2">
@@ -698,7 +613,7 @@ export default function App() {
                 📁
               </button>
             </div>
-            <input ref={fileInputRef} type="file" accept="audio/*,video/*" onChange={upload} hidden />
+            <input ref={fileInputRef} type="file" accept="audio/*,video/*" onChange={handleFileUpload} hidden />
           </div>
 
           {/* Now Playing card */}
@@ -739,7 +654,7 @@ export default function App() {
                       {t.tabLocalFile}
                     </button>
                   )}
-    {availableTabs.includes("spotify") && (
+                  {availableTabs.includes("spotify") && (
                     <button
                       onClick={() => { setSourceTab("spotify"); setPlayerKey((k) => k + 1); }}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
@@ -819,20 +734,6 @@ export default function App() {
 
               {/* ── Players ── */}
 
-              {/* Local audio */}
-              {currentSong.source === "local" && (
-                <audio
-                  ref={audioRef}
-                  src={currentSong.url}
-                  controls
-                  autoPlay={isPlaying}
-                  loop={repeat}
-                  className="w-full"
-                  onPlay={() => setIsPlaying(true)}
-                  onPause={() => setIsPlaying(false)}
-                />
-              )}
-
               {/* ── SPOTIFY PLAYER ── */}
               {isPlaying && showingSpotify && currentSong.spotifyEmbedUrl && (
                 <>
@@ -887,22 +788,26 @@ export default function App() {
               {sourceTab === "local" && currentSong.localFileUrl && (
                 currentSong.localFileType?.startsWith("video/") ? (
                   <video
-                    key={`local-${playerKey}`}
+                    key={`local-${currentSong.title}`}
                     src={currentSong.localFileUrl}
                     controls
-                    autoPlay={isPlaying}
+                    autoPlay
                     loop={repeat}
                     className="w-full rounded-xl"
                     style={{ maxHeight: "300px" }}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
                   />
                 ) : (
                   <audio
-                    key={`local-${playerKey}`}
+                    key={`local-${currentSong.title}`}
                     src={currentSong.localFileUrl}
                     controls
-                    autoPlay={isPlaying}
+                    autoPlay
                     loop={repeat}
                     className="w-full mt-2"
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
                   />
                 )
               )}
@@ -938,18 +843,10 @@ export default function App() {
             <button onClick={clearPlaylist} className="flex-1 bg-gray-800 hover:bg-gray-700 p-2 rounded-xl text-sm transition">
               {t.clear}
             </button>
-            {!isInstalled && (
-              <button
-                onClick={installApp}
-                className="flex-1 bg-purple-700 hover:bg-purple-600 p-2 rounded-xl text-sm transition"
-              >
+            {deferredPrompt && (
+              <button onClick={installApp} className="flex-1 bg-purple-700 hover:bg-purple-600 p-2 rounded-xl text-sm transition">
                 {t.install}
               </button>
-            )}
-            {isInstalled && (
-              <div className="flex-1 bg-green-900/40 border border-green-700/50 p-2 rounded-xl text-sm text-green-400 text-center">
-                {t.installed}
-              </div>
             )}
           </div>
         </div>
@@ -1020,7 +917,7 @@ export default function App() {
 
             {active.songs.map((s, i) => (
               <div
-                key={`${s.videoId || s.spotifyEmbedUrl || s.url || s.title}-${i}`}
+                key={`${s.videoId || s.spotifyEmbedUrl || s.localFileUrl || s.url || s.title}-${i}`}
                 draggable
                 onDragStart={() => handleDragStart(i)}
                 onDragOver={(e) => handleDragOver(e, i)}
