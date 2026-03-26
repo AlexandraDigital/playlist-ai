@@ -56,7 +56,8 @@ function buildSearchQuery(raw) {
     const artist = raw.slice(0, dashIdx).trim();
     const track = raw.slice(dashIdx + 3).trim();
     if (artist && track) {
-      return `track:${encodeURIComponent(track)} artist:${encodeURIComponent(artist)}`;
+      // Use + to encode the space between field filters (valid URL query encoding)
+      return `track:${encodeURIComponent(track)}+artist:${encodeURIComponent(artist)}`;
     }
   }
   return encodeURIComponent(raw);
