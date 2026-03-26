@@ -334,12 +334,22 @@ export default function App() {
     // Check if user pasted a Spotify URL in the artist field
     const spotifyId = extractSpotifyTrackId(artist) || extractSpotifyTrackId(song);
     if (spotifyId) {
+      const spotifyTrackUrl = `https://open.spotify.com/track/${spotifyId}`;
+      const title = (artist && !extractSpotifyTrackId(artist) ? artist + " - " : "") + (song && !extractSpotifyTrackId(song) ? song : "Spotify Track");
+      // Look up SoundCloud via Odesli as fallback
+      let soundcloudUrl = null;
+      try {
+        const scData = await safeFetchJSON(`/search?spotifyUrl=${encodeURIComponent(spotifyTrackUrl)}`);
+        soundcloudUrl = scData.soundcloudUrl || null;
+      } catch (e) {
+        // Odesli lookup failed — that's okay, Spotify embed still works
+      }
       addSong({
-        title: (artist && !extractSpotifyTrackId(artist) ? artist + " - " : "") + (song && !extractSpotifyTrackId(song) ? song : "Spotify Track"),
+        title,
         videoId: null,
         thumbnail: null,
         spotifyEmbedUrl: `https://open.spotify.com/embed/track/${spotifyId}`,
-        soundcloudUrl: null,
+        soundcloudUrl,
         source: "spotify",
       });
       setArtist(""); setSong("");

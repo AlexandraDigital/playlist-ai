@@ -3,7 +3,37 @@
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const query = url.searchParams.get('q');
+  const spotifyUrl = url.searchParams.get('spotifyUrl');
 
+  // ── Spotify URL mode: just look up SoundCloud via Odesli ──
+  if (spotifyUrl) {
+    const match = spotifyUrl.match(/track\/([a-zA-Z0-9]+)/);
+    if (!match) {
+      return new Response(JSON.stringify({ error: 'Invalid Spotify URL' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    const trackId = match[1];
+    const spotifyEmbedUrl = `https://open.spotify.com/embed/track/${trackId}`;
+    let soundcloudUrl = null;
+    try {
+      const odesliUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(spotifyUrl)}&userCountry=US`;
+      const odesliRes = await fetch(odesliUrl);
+      if (odesliRes.ok) {
+        const odesliData = await odesliRes.json();
+        soundcloudUrl = odesliData?.linksByPlatform?.soundcloud?.url || null;
+      }
+    } catch (e) {
+      console.error('Odesli lookup failed:', e.message);
+    }
+    return new Response(JSON.stringify({ spotifyEmbedUrl, soundcloudUrl }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  // ── YouTube search mode ──
   if (!query) {
     return new Response(JSON.stringify({ error: 'Missing query parameter' }), {
       status: 400,
@@ -83,8 +113,8 @@ export async function onRequestGet(context) {
       youtubeUrl,
       title,
       thumbnail,
-      spotifyEmbedUrl,   // null if not found
-      soundcloudUrl      // null if not found
+      spotifyEmbedUrl,
+      soundcloudUrl
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
