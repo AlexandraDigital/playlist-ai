@@ -11,7 +11,6 @@ const json200 = (body) =>
   });
 
 // Module-level token cache — shared across requests in the same Cloudflare isolate
-// This means 20 parallel song requests reuse the same token instead of each fetching one
 let cachedToken = null;
 let tokenExpiry = 0;
 
@@ -28,7 +27,14 @@ async function getSpotifyToken(clientId, clientSecret) {
     body: "grant_type=client_credentials",
   });
 
-  const tokenData = await tokenRes.json();
+  // Get raw text first so we can debug non-JSON responses
+  const rawText = await tokenRes.text();
+  let tokenData;
+  try {
+    tokenData = JSON.parse(rawText);
+  } catch (e) {
+    throw new Error(`Spotify token endpoint returned non-JSON (status ${tokenRes.status}): ${rawText.slice(0, 300)}`);
+  }
 
   if (!tokenRes.ok || !tokenData.access_token) {
     throw new Error(
@@ -38,7 +44,6 @@ async function getSpotifyToken(clientId, clientSecret) {
   }
 
   cachedToken = tokenData.access_token;
-  // Cache with 60s buffer before actual expiry
   tokenExpiry = now + (tokenData.expires_in - 60) * 1000;
   return cachedToken;
 }
@@ -67,7 +72,6 @@ export async function onRequestGet({ request, env }) {
     const data = await searchRes.json();
 
     if (!searchRes.ok) {
-      // If token was rejected (401), clear the cache so next request gets a fresh token
       if (searchRes.status === 401) {
         cachedToken = null;
         tokenExpiry = 0;
