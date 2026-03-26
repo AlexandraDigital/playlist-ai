@@ -34,9 +34,11 @@ const TRANSLATIONS = {
     defaultPlaylist: "My Playlist",
     confirmReplace: "This will replace all songs in your playlist. Continue?",
     spotifyRepeatNote: "Use ↺ inside the Spotify player for repeat",
+    scRepeatNote: "Use ↺ inside the SoundCloud player for repeat",
     tabYouTube: "▶ YouTube",
     tabSpotify: "♫ Spotify",
-    openInSpotify: "Open in Spotify",
+    tabSoundCloud: "☁ SoundCloud",
+    openInSpotify: "Open in Spotify App",
   },
   es: {
     appName: "Playlist AI",
@@ -71,9 +73,11 @@ const TRANSLATIONS = {
     defaultPlaylist: "Mi Playlist",
     confirmReplace: "Esto reemplazará todas las canciones de tu playlist. ¿Continuar?",
     spotifyRepeatNote: "Usa ↺ dentro del reproductor de Spotify para repetir",
+    scRepeatNote: "Usa ↺ dentro del reproductor de SoundCloud para repetir",
     tabYouTube: "▶ YouTube",
     tabSpotify: "♫ Spotify",
-    openInSpotify: "Abrir en Spotify",
+    tabSoundCloud: "☁ SoundCloud",
+    openInSpotify: "Abrir en App de Spotify",
   },
   zh: {
     appName: "Playlist AI",
@@ -108,9 +112,11 @@ const TRANSLATIONS = {
     defaultPlaylist: "我的歌单",
     confirmReplace: "这将替换歌单中的所有歌曲，是否继续？",
     spotifyRepeatNote: "请使用 Spotify 播放器内的 ↺ 按钮来循环播放",
+    scRepeatNote: "请使用 SoundCloud 播放器内的 ↺ 按钮来循环播放",
     tabYouTube: "▶ YouTube",
     tabSpotify: "♫ Spotify",
-    openInSpotify: "在 Spotify 中打开",
+    tabSoundCloud: "☁ SoundCloud",
+    openInSpotify: "在 Spotify App 中打开",
   },
 };
 
@@ -126,11 +132,11 @@ const extractSpotifyTrackId = (input) => {
   return match ? match[1] : null;
 };
 
-// Convert a Spotify embed URL to the direct open.spotify.com track URL
-const getSpotifyOpenUrl = (embedUrl) => {
+// Get Spotify deep link (opens app on mobile) from embed URL
+const getSpotifyDeepLink = (embedUrl) => {
   if (!embedUrl) return null;
   const match = embedUrl.match(/embed\/track\/([a-zA-Z0-9]+)/);
-  return match ? `https://open.spotify.com/track/${match[1]}` : null;
+  return match ? `spotify://track/${match[1]}` : null;
 };
 
 export default function App() {
@@ -151,7 +157,7 @@ export default function App() {
   const [renameValue, setRenameValue] = useState("");
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
-  // "youtube" | "spotify" — which player tab is active for the current song
+  // "youtube" | "spotify" | "soundcloud" — which player tab is active
   const [sourceTab, setSourceTab] = useState("spotify");
   const [ytQuotaExceeded, setYtQuotaExceeded] = useState(false);
   const ytQuotaRef = useRef(false);
@@ -164,12 +170,15 @@ export default function App() {
   const audioRef = useRef();
   const active = playlists[currentPlaylist];
 
-  // When song changes: reset to spotify tab + start playing
+  // When song changes: pick best tab (Spotify > SoundCloud > YouTube) + start playing
   useEffect(() => {
-    setSourceTab("spotify");
+    const s = playlists[currentPlaylist]?.songs[currentIndex];
+    if (s?.spotifyEmbedUrl) setSourceTab("spotify");
+    else if (s?.soundcloudUrl) setSourceTab("soundcloud");
+    else setSourceTab("youtube");
     setIsPlaying(true);
     setPlayerKey((k) => k + 1);
-  }, [currentIndex, currentPlaylist]);
+  }, [currentIndex, currentPlaylist]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     localStorage.setItem("lang", lang);
@@ -290,7 +299,7 @@ export default function App() {
     return res.json();
   };
 
-  // Search YouTube (+ Odesli for Spotify embed), return a song object
+  // Search YouTube + Odesli (Spotify + SoundCloud), return a song object
   const fetchSong = async (query) => {
     if (ytQuotaRef.current) {
       throw new Error("YouTube quota exceeded. Add songs manually by pasting a Spotify URL.");
@@ -316,6 +325,7 @@ export default function App() {
       videoId: data.videoId,
       thumbnail: data.thumbnail,
       spotifyEmbedUrl: data.spotifyEmbedUrl || null,
+      soundcloudUrl: data.soundcloudUrl || null,
       source,
     };
   };
@@ -329,6 +339,7 @@ export default function App() {
         videoId: null,
         thumbnail: null,
         spotifyEmbedUrl: `https://open.spotify.com/embed/track/${spotifyId}`,
+        soundcloudUrl: null,
         source: "spotify",
       });
       setArtist(""); setSong("");
@@ -423,9 +434,13 @@ export default function App() {
   };
 
   const currentSong = active.songs[currentIndex];
-  const showingSpotify =
-    currentSong?.source === "spotify" ||
-    (currentSong?.source === "both" && sourceTab === "spotify");
+
+  // Derive which tabs are available for current song
+  const availableTabs = [
+    currentSong?.spotifyEmbedUrl ? "spotify" : null,
+    currentSong?.soundcloudUrl ? "soundcloud" : null,
+    currentSong?.videoId ? "youtube" : null,
+  ].filter(Boolean);
 
   // Build Spotify embed URL with autoplay when playing
   const buildSpotifyUrl = (baseUrl) => {
@@ -435,10 +450,22 @@ export default function App() {
     return url.toString();
   };
 
-  // Spotify open URL for current song (used for "Open in Spotify" button)
-  const currentSpotifyOpenUrl = currentSong?.spotifyEmbedUrl
-    ? getSpotifyOpenUrl(currentSong.spotifyEmbedUrl)
+  // Build SoundCloud embed URL
+  const buildSoundCloudUrl = (trackUrl) => {
+    if (!trackUrl) return null;
+    const encoded = encodeURIComponent(trackUrl);
+    const autoplay = isPlaying ? "true" : "false";
+    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplay}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
+  };
+
+  // Spotify deep link for current song — opens Spotify app on mobile
+  const currentSpotifyDeepLink = currentSong?.spotifyEmbedUrl
+    ? getSpotifyDeepLink(currentSong.spotifyEmbedUrl)
     : null;
+
+  const showingSpotify = sourceTab === "spotify" && !!currentSong?.spotifyEmbedUrl;
+  const showingSoundCloud = sourceTab === "soundcloud" && !!currentSong?.soundcloudUrl;
+  const repeatSupported = currentSong?.source === "local" || (currentSong?.videoId && sourceTab === "youtube");
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
@@ -547,9 +574,8 @@ export default function App() {
             <div className="bg-gray-900 rounded-2xl p-4">
               <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{t.nowPlaying}</p>
 
-              {/* YouTube thumbnail — shown when on YouTube tab or source is youtube-only */}
-              {(currentSong.source === "youtube" || (currentSong.source === "both" && sourceTab === "youtube")) &&
-                currentSong.videoId && (
+              {/* YouTube thumbnail — shown when on YouTube tab */}
+              {sourceTab === "youtube" && currentSong.videoId && (
                 <div className="relative w-full mb-3 rounded-xl overflow-hidden">
                   <img
                     src={`https://img.youtube.com/vi/${currentSong.videoId}/mqdefault.jpg`}
@@ -566,29 +592,45 @@ export default function App() {
                 <p className="text-sm font-medium truncate mb-2">{currentSong.title}</p>
               )}
 
-              {/* Source tab switcher — only shown when both are available */}
-              {currentSong.source === "both" && (
-                <div className="flex gap-2 mb-3">
-                  <button
-                    onClick={() => setSourceTab("spotify")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
-                      sourceTab === "spotify"
-                        ? "bg-[#1db954] text-black"
-                        : "bg-gray-700 hover:bg-gray-600 text-gray-300"
-                    }`}
-                  >
-                    {t.tabSpotify}
-                  </button>
-                  <button
-                    onClick={() => setSourceTab("youtube")}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
-                      sourceTab === "youtube"
-                        ? "bg-red-600 text-white"
-                        : "bg-gray-700 hover:bg-gray-600 text-gray-300"
-                    }`}
-                  >
-                    {t.tabYouTube}
-                  </button>
+              {/* Dynamic tab switcher — only when more than 1 source available */}
+              {availableTabs.length > 1 && (
+                <div className="flex gap-1.5 mb-3">
+                  {availableTabs.includes("spotify") && (
+                    <button
+                      onClick={() => { setSourceTab("spotify"); setPlayerKey((k) => k + 1); }}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        sourceTab === "spotify"
+                          ? "bg-[#1db954] text-black"
+                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                      }`}
+                    >
+                      {t.tabSpotify}
+                    </button>
+                  )}
+                  {availableTabs.includes("soundcloud") && (
+                    <button
+                      onClick={() => { setSourceTab("soundcloud"); setPlayerKey((k) => k + 1); }}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        sourceTab === "soundcloud"
+                          ? "bg-[#ff5500] text-white"
+                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                      }`}
+                    >
+                      {t.tabSoundCloud}
+                    </button>
+                  )}
+                  {availableTabs.includes("youtube") && (
+                    <button
+                      onClick={() => { setSourceTab("youtube"); setPlayerKey((k) => k + 1); }}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        sourceTab === "youtube"
+                          ? "bg-red-600 text-white"
+                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                      }`}
+                    >
+                      {t.tabYouTube}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -609,16 +651,20 @@ export default function App() {
                 </button>
 
                 <button
-                  onClick={() => !showingSpotify && setRepeat(!repeat)}
+                  onClick={() => repeatSupported && setRepeat(!repeat)}
                   className={`px-4 py-2 rounded-xl transition ${
-                    showingSpotify
+                    !repeatSupported
                       ? "bg-gray-800 text-gray-600 cursor-not-allowed"
                       : repeat
                       ? "bg-purple-600"
                       : "bg-gray-700 hover:bg-gray-600"
                   }`}
-                  title={showingSpotify ? t.spotifyRepeatNote : t.toggleRepeat}
-                  disabled={showingSpotify}
+                  title={
+                    showingSpotify ? t.spotifyRepeatNote
+                    : showingSoundCloud ? t.scRepeatNote
+                    : t.toggleRepeat
+                  }
+                  disabled={!repeatSupported}
                 >🔁</button>
 
                 <button
@@ -643,11 +689,8 @@ export default function App() {
                 />
               )}
 
-              {/* Spotify player — shown first (preferred) */}
-              {isPlaying &&
-                (currentSong.source === "spotify" ||
-                  (currentSong.source === "both" && sourceTab === "spotify")) &&
-                currentSong.spotifyEmbedUrl && (
+              {/* ── SPOTIFY PLAYER ── */}
+              {isPlaying && showingSpotify && currentSong.spotifyEmbedUrl && (
                 <>
                   <iframe
                     key={`sp-${playerKey}`}
@@ -658,11 +701,9 @@ export default function App() {
                     loading="lazy"
                   />
                   <p className="text-xs text-gray-500 text-center mt-1 mb-2">{t.spotifyRepeatNote}</p>
-                  {currentSpotifyOpenUrl && (
+                  {currentSpotifyDeepLink && (
                     <a
-                      href={currentSpotifyOpenUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={currentSpotifyDeepLink}
                       className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#1db954] hover:bg-[#1ed760] active:bg-[#17a349] text-black font-semibold text-sm rounded-xl transition"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -674,21 +715,16 @@ export default function App() {
                 </>
               )}
 
-              {/* Spotify paused state — show placeholder + Open in Spotify button */}
-              {!isPlaying &&
-                (currentSong.source === "spotify" ||
-                  (currentSong.source === "both" && sourceTab === "spotify")) &&
-                currentSong.spotifyEmbedUrl && (
+              {/* Spotify paused state */}
+              {!isPlaying && showingSpotify && currentSong.spotifyEmbedUrl && (
                 <>
                   <div className="w-full h-[152px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2 mb-2">
                     <span className="text-4xl text-[#1db954]">♫</span>
                     <p className="text-xs text-gray-400">Press ▶ to play</p>
                   </div>
-                  {currentSpotifyOpenUrl && (
+                  {currentSpotifyDeepLink && (
                     <a
-                      href={currentSpotifyOpenUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={currentSpotifyDeepLink}
                       className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#1db954] hover:bg-[#1ed760] active:bg-[#17a349] text-black font-semibold text-sm rounded-xl transition"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -700,11 +736,32 @@ export default function App() {
                 </>
               )}
 
-              {/* YouTube player */}
-              {isPlaying &&
-                (currentSong.source === "youtube" ||
-                  (currentSong.source === "both" && sourceTab === "youtube")) &&
-                currentSong.videoId && (
+              {/* ── SOUNDCLOUD PLAYER ── */}
+              {isPlaying && showingSoundCloud && currentSong.soundcloudUrl && (
+                <>
+                  <iframe
+                    key={`sc-${playerKey}`}
+                    className="w-full rounded-xl"
+                    height="166"
+                    scrolling="no"
+                    frameBorder="no"
+                    src={buildSoundCloudUrl(currentSong.soundcloudUrl)}
+                    allow="autoplay"
+                  />
+                  <p className="text-xs text-gray-500 text-center mt-1">{t.scRepeatNote}</p>
+                </>
+              )}
+
+              {/* SoundCloud paused state */}
+              {!isPlaying && showingSoundCloud && currentSong.soundcloudUrl && (
+                <div className="w-full h-[166px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2">
+                  <span className="text-4xl text-[#ff5500]">☁</span>
+                  <p className="text-xs text-gray-400">Press ▶ to play</p>
+                </div>
+              )}
+
+              {/* ── YOUTUBE PLAYER ── */}
+              {isPlaying && sourceTab === "youtube" && currentSong.videoId && (
                 <iframe
                   key={`yt-${playerKey}`}
                   className="w-full rounded-xl"
@@ -715,10 +772,7 @@ export default function App() {
               )}
 
               {/* YouTube paused state */}
-              {!isPlaying &&
-                (currentSong.source === "youtube" ||
-                  (currentSong.source === "both" && sourceTab === "youtube")) &&
-                currentSong.videoId && (
+              {!isPlaying && sourceTab === "youtube" && currentSong.videoId && (
                 <div className="w-full h-[200px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2 relative overflow-hidden">
                   <img
                     src={`https://img.youtube.com/vi/${currentSong.videoId}/mqdefault.jpg`}
@@ -827,7 +881,7 @@ export default function App() {
                 } ${dragIndex === i ? "opacity-30" : ""}`}
               >
                 {/* Thumbnail / icon */}
-                {s.source === "both" && s.videoId ? (
+                {s.videoId ? (
                   <div className="relative w-14 h-10 shrink-0">
                     <img
                       src={s.thumbnail || `https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
@@ -835,17 +889,13 @@ export default function App() {
                       className="w-full h-full object-cover rounded-lg"
                       draggable={false}
                     />
-                    <span className="absolute bottom-0 right-0 bg-[#1db954] text-black text-[9px] font-bold px-1 rounded-bl-lg rounded-tr-lg leading-tight">
-                      ♫
-                    </span>
+                    {s.spotifyEmbedUrl && (
+                      <span className="absolute bottom-0 right-0 bg-[#1db954] text-black text-[9px] font-bold px-1 rounded-bl-lg rounded-tr-lg leading-tight">♫</span>
+                    )}
+                    {!s.spotifyEmbedUrl && s.soundcloudUrl && (
+                      <span className="absolute bottom-0 right-0 bg-[#ff5500] text-white text-[9px] font-bold px-1 rounded-bl-lg rounded-tr-lg leading-tight">☁</span>
+                    )}
                   </div>
-                ) : s.source === "youtube" && s.videoId ? (
-                  <img
-                    src={s.thumbnail || `https://img.youtube.com/vi/${s.videoId}/mqdefault.jpg`}
-                    alt=""
-                    className="w-14 h-10 object-cover rounded-lg shrink-0"
-                    draggable={false}
-                  />
                 ) : s.source === "spotify" ? (
                   <div className="w-14 h-10 bg-[#1db954]/20 border border-[#1db954]/30 rounded-lg flex items-center justify-center shrink-0">
                     <span className="text-[#1db954] text-lg">♫</span>
@@ -858,14 +908,14 @@ export default function App() {
 
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate leading-tight">{s.title}</p>
-                  <div className="flex gap-1 mt-0.5">
-                    {(s.source === "spotify" || s.source === "both") && (
+                  <div className="flex gap-1 mt-0.5 flex-wrap">
+                    {s.spotifyEmbedUrl && (
                       <span className="text-[10px] text-green-400 font-medium">Spotify</span>
                     )}
-                    {s.source === "both" && (
-                      <span className="text-[10px] text-gray-600">·</span>
+                    {s.soundcloudUrl && (
+                      <span className="text-[10px] text-orange-400 font-medium">SoundCloud</span>
                     )}
-                    {(s.source === "youtube" || s.source === "both") && (
+                    {s.videoId && (
                       <span className="text-[10px] text-red-400 font-medium">YouTube</span>
                     )}
                     {s.source === "local" && (

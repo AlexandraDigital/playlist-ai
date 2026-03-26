@@ -1,4 +1,4 @@
-// functions/search.js — YouTube search + Odesli Spotify lookup
+// functions/search.js — YouTube search + Odesli Spotify + SoundCloud lookup
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
@@ -52,21 +52,26 @@ export async function onRequestGet(context) {
     const title = item.snippet.title;
     const thumbnail = item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || '';
 
-    // Step 2: Use Odesli to find Spotify track ID (free, no auth needed)
+    // Step 2: Use Odesli to find Spotify + SoundCloud (free, no auth needed)
     let spotifyEmbedUrl = null;
+    let soundcloudUrl = null;
     try {
       const odesliUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(youtubeUrl)}&userCountry=US`;
       const odesliRes = await fetch(odesliUrl);
       if (odesliRes.ok) {
         const odesliData = await odesliRes.json();
-        const spotifyUrl = odesliData?.linksByPlatform?.spotify?.url;
-        if (spotifyUrl) {
-          // Extract track ID from URL like https://open.spotify.com/track/TRACK_ID
-          const match = spotifyUrl.match(/track\/([a-zA-Z0-9]+)/);
+
+        // Spotify
+        const spotifyTrackUrl = odesliData?.linksByPlatform?.spotify?.url;
+        if (spotifyTrackUrl) {
+          const match = spotifyTrackUrl.match(/track\/([a-zA-Z0-9]+)/);
           if (match) {
             spotifyEmbedUrl = `https://open.spotify.com/embed/track/${match[1]}`;
           }
         }
+
+        // SoundCloud
+        soundcloudUrl = odesliData?.linksByPlatform?.soundcloud?.url || null;
       }
     } catch (e) {
       // Odesli failed — that's okay, we still have YouTube
@@ -78,7 +83,8 @@ export async function onRequestGet(context) {
       youtubeUrl,
       title,
       thumbnail,
-      spotifyEmbedUrl // null if Odesli couldn't find it
+      spotifyEmbedUrl,   // null if not found
+      soundcloudUrl      // null if not found
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
