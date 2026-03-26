@@ -41,6 +41,7 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 Video/Audio",
     uploadFile: "📎 Upload File",
     openInSpotify: "Open in Spotify App",
+    installInstructions: "To install this app:\n• Chrome/Android: tap ⋮ menu → 'Add to Home Screen'\n• Safari/iOS: tap the Share button → 'Add to Home Screen'\n• Edge/Desktop: click the install icon in the address bar",
   },
   es: {
     appName: "Playlist AI",
@@ -82,6 +83,7 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 Video/Audio",
     uploadFile: "📎 Subir Archivo",
     openInSpotify: "Abrir en App de Spotify",
+    installInstructions: "Para instalar esta app:\n• Chrome/Android: toca el menú ⋮ → 'Agregar a pantalla de inicio'\n• Safari/iOS: toca el botón Compartir → 'Agregar a pantalla de inicio'\n• Edge/Escritorio: haz clic en el ícono de instalación en la barra de direcciones",
   },
   zh: {
     appName: "Playlist AI",
@@ -123,6 +125,7 @@ const TRANSLATIONS = {
     tabLocalFile: "📹 视频/音频",
     uploadFile: "📎 上传文件",
     openInSpotify: "在 Spotify App 中打开",
+    installInstructions: "安装此应用：\n• Chrome/安卓：点击 ⋮ 菜单 → '添加到主屏幕'\n• Safari/iOS：点击分享按钮 → '添加到主屏幕'\n• Edge/桌面：点击地址栏中的安装图标",
   },
 };
 
@@ -195,7 +198,17 @@ export default function App() {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
-  const installApp = () => { if (!deferredPrompt) return; deferredPrompt.prompt(); };
+  const installApp = async () => {
+    if (deferredPrompt) {
+      // Native install prompt available — use it
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+    } else {
+      // Fallback: show manual install instructions
+      alert(t.installInstructions);
+    }
+  };
 
   const upload = (e) => {
     const file = e.target.files[0];
