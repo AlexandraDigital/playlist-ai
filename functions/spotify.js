@@ -27,7 +27,6 @@ async function getSpotifyToken(clientId, clientSecret) {
     body: "grant_type=client_credentials",
   });
 
-  // Get raw text first so we can debug non-JSON responses
   const rawText = await tokenRes.text();
   let tokenData;
   try {
@@ -48,6 +47,37 @@ async function getSpotifyToken(clientId, clientSecret) {
   return cachedToken;
 }
 
+// Build the best Spotify search query from a raw string.
+// If it matches "Artist - Song" format, use field filters for accuracy.
+// Otherwise fall back to the plain string.
+function buildSearchQuery(raw) {
+  const dashIdx = raw.indexOf(" - ");
+  if (dashIdx !== -1) {
+    const artist = raw.slice(0, dashIdx).trim();
+    const track = raw.slice(dashIdx + 3).trim();
+    if (artist && track) {
+      return `track:${encodeURIComponent(track)} artist:${encodeURIComponent(artist)}`;
+    }
+  }
+  return encodeURIComponent(raw);
+}
+
+async function searchTrack(accessToken, q) {
+  const searchRes = await fetch(
+    `https://api.spotify.com/v1/search?q=${buildSearchQuery(q)}&type=track&limit=1`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await searchRes.json();
+  if (!searchRes.ok) {
+    if (searchRes.status === 401) {
+      cachedToken = null;
+      tokenExpiry = 0;
+    }
+    throw new Error(data.error?.message || `Spotify search failed (status ${searchRes.status})`);
+  }
+  return data.tracks?.items?.[0] || null;
+}
+
 export async function onRequestGet({ request, env }) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q");
@@ -64,25 +94,14 @@ export async function onRequestGet({ request, env }) {
   try {
     const accessToken = await getSpotifyToken(env.SPOTIFY_CLIENT_ID, env.SPOTIFY_CLIENT_SECRET);
 
-    const searchRes = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    // Try structured search first (best for "Artist - Song" format)
+    let track = await searchTrack(accessToken, q);
 
-    const data = await searchRes.json();
-
-    if (!searchRes.ok) {
-      if (searchRes.status === 401) {
-        cachedToken = null;
-        tokenExpiry = 0;
-      }
-      return json200({
-        track: null,
-        error: data.error?.message || `Spotify search failed (status ${searchRes.status})`,
-      });
+    // If no result and query has " - ", retry with plain query as fallback
+    if (!track && q.includes(" - ")) {
+      track = await searchTrack(accessToken, q.replace(" - ", " "));
     }
 
-    const track = data.tracks?.items?.[0];
     if (!track) return json200({ track: null });
 
     return json200({
