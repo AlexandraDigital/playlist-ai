@@ -38,6 +38,8 @@ const TRANSLATIONS = {
     tabYouTube: "▶ YouTube",
     tabSpotify: "♫ Spotify",
     tabSoundCloud: "☁ SoundCloud",
+    tabLocalFile: "📹 Video/Audio",
+    uploadFile: "📎 Upload File",
     openInSpotify: "Open in Spotify App",
   },
   es: {
@@ -77,6 +79,8 @@ const TRANSLATIONS = {
     tabYouTube: "▶ YouTube",
     tabSpotify: "♫ Spotify",
     tabSoundCloud: "☁ SoundCloud",
+    tabLocalFile: "📹 Video/Audio",
+    uploadFile: "📎 Subir Archivo",
     openInSpotify: "Abrir en App de Spotify",
   },
   zh: {
@@ -116,6 +120,8 @@ const TRANSLATIONS = {
     tabYouTube: "▶ YouTube",
     tabSpotify: "♫ Spotify",
     tabSoundCloud: "☁ SoundCloud",
+    tabLocalFile: "📹 视频/音频",
+    uploadFile: "📎 上传文件",
     openInSpotify: "在 Spotify App 中打开",
   },
 };
@@ -329,6 +335,24 @@ export default function App() {
     };
   };
 
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const blobUrl = URL.createObjectURL(file);
+    const isVideo = file.type.startsWith("video/");
+    addSong({
+      title: file.name.replace(/\.[^.]+$/, ""),
+      videoId: null,
+      thumbnail: isVideo ? null : null,
+      spotifyEmbedUrl: null,
+      soundcloudUrl: null,
+      localFileUrl: blobUrl,
+      localFileType: file.type,
+      source: "local",
+    });
+    e.target.value = "";
+  };
+
   const searchSong = async () => {
     // Check if user pasted a YouTube URL
     const youtubeId = extractYouTubeVideoId(artist) || extractYouTubeVideoId(song);
@@ -471,6 +495,7 @@ export default function App() {
 
   // Derive which tabs are available for current song
   const availableTabs = [
+    currentSong?.localFileUrl ? "local" : null,
     currentSong?.spotifyEmbedUrl ? "spotify" : null,
     currentSong?.soundcloudUrl ? "soundcloud" : null,
     currentSong?.videoId ? "youtube" : null,
@@ -595,7 +620,7 @@ export default function App() {
                 📁
               </button>
             </div>
-            <input ref={fileInputRef} type="file" accept="audio/*" onChange={upload} hidden />
+            <input ref={fileInputRef} type="file" accept="audio/*,video/*" onChange={upload} hidden />
           </div>
 
           {/* Now Playing card */}
@@ -624,7 +649,19 @@ export default function App() {
               {/* Dynamic tab switcher — only when more than 1 source available */}
               {availableTabs.length > 1 && (
                 <div className="flex gap-1.5 mb-3">
-                  {availableTabs.includes("spotify") && (
+                  {availableTabs.includes("local") && (
+                    <button
+                      onClick={() => { setSourceTab("local"); setPlayerKey((k) => k + 1); }}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                        sourceTab === "local"
+                          ? "bg-purple-600 text-white"
+                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                      }`}
+                    >
+                      {t.tabLocalFile}
+                    </button>
+                  )}
+    {availableTabs.includes("spotify") && (
                     <button
                       onClick={() => { setSourceTab("spotify"); setPlayerKey((k) => k + 1); }}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
@@ -766,6 +803,30 @@ export default function App() {
                   <span className="text-4xl text-[#ff5500]">☁</span>
                   <p className="text-xs text-gray-400">Press ▶ to play</p>
                 </div>
+              )}
+
+              {/* ── LOCAL FILE PLAYER ── */}
+              {sourceTab === "local" && currentSong.localFileUrl && (
+                currentSong.localFileType?.startsWith("video/") ? (
+                  <video
+                    key={`local-${playerKey}`}
+                    src={currentSong.localFileUrl}
+                    controls
+                    autoPlay={isPlaying}
+                    loop={repeat}
+                    className="w-full rounded-xl"
+                    style={{ maxHeight: "300px" }}
+                  />
+                ) : (
+                  <audio
+                    key={`local-${playerKey}`}
+                    src={currentSong.localFileUrl}
+                    controls
+                    autoPlay={isPlaying}
+                    loop={repeat}
+                    className="w-full mt-2"
+                  />
+                )
               )}
 
               {/* ── YOUTUBE PLAYER ── */}
