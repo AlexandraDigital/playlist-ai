@@ -256,8 +256,12 @@ export default function App() {
         if (data.event === "onStateChange" && data.info === 0) {
           nextSongRef.current?.();
         }
-        // SoundCloud Widget API
-        if (data.soundcloud === true && data.method === "SOUND_FINISHED") {
+        // SoundCloud Widget API — check both possible event formats
+        const scFinished =
+          (data.soundcloud === true && data.method === "SOUND_FINISHED") ||
+          (data.soundcloud === true && data.event === "finish") ||
+          (typeof e.data === "string" && e.data.includes("SOUND_FINISHED"));
+        if (scFinished) {
           nextSongRef.current?.();
         }
       } catch {}
@@ -679,10 +683,12 @@ export default function App() {
   // Derive which tabs are available for current song
   const availableTabs = [
     currentSong?.localFileUrl ? "local" : null,
-    currentSong?.spotifyEmbedUrl ? "spotify" : null,
     currentSong?.soundcloudUrl ? "soundcloud" : null,
+    currentSong?.spotifyEmbedUrl ? "spotify" : null,
     currentSong?.videoId ? "youtube" : null,
   ].filter(Boolean);
+  // effectiveTab: use selected tab if available, otherwise fall back to first available
+  const effectiveTab = availableTabs.includes(sourceTab) ? sourceTab : (availableTabs[0] || "youtube");
 
   // Build Spotify embed URL with autoplay when playing
   const buildSpotifyUrl = (baseUrl) => {
@@ -700,9 +706,9 @@ export default function App() {
     return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplay}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
   };
 
-  const showingSpotify = sourceTab === "spotify" && !!currentSong?.spotifyEmbedUrl;
-  const showingSoundCloud = sourceTab === "soundcloud" && !!currentSong?.soundcloudUrl;
-  const repeatSupported = currentSong?.source === "local" || (currentSong?.videoId && sourceTab === "youtube");
+  const showingSpotify = effectiveTab === "spotify" && !!currentSong?.spotifyEmbedUrl;
+  const showingSoundCloud = effectiveTab === "soundcloud" && !!currentSong?.soundcloudUrl;
+  const repeatSupported = currentSong?.source === "local" || (currentSong?.videoId && effectiveTab === "youtube");
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
@@ -812,7 +818,7 @@ export default function App() {
               <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{t.nowPlaying}</p>
 
               {/* YouTube thumbnail — shown when on YouTube tab */}
-              {sourceTab === "youtube" && currentSong.videoId && (
+              {effectiveTab === "youtube" && currentSong.videoId && (
                 <div className="relative w-full mb-3 rounded-xl overflow-hidden">
                   <img
                     src={`https://img.youtube.com/vi/${currentSong.videoId}/mqdefault.jpg`}
@@ -984,7 +990,7 @@ export default function App() {
               )}
 
               {/* ── LOCAL FILE PLAYER ── */}
-              {sourceTab === "local" && currentSong.localFileUrl && (
+              {effectiveTab === "local" && currentSong.localFileUrl && (
                 currentSong.localFileType?.startsWith("video/") ? (
                   <video
                     key={`local-${currentSong.title}`}
@@ -1015,7 +1021,7 @@ export default function App() {
               )}
 
               {/* ── YOUTUBE PLAYER ── */}
-              {isPlaying && sourceTab === "youtube" && currentSong.videoId && (
+              {isPlaying && effectiveTab === "youtube" && currentSong.videoId && (
                 <iframe
                   ref={ytIframeRef}
                   key={`yt-${playerKey}`}
@@ -1027,7 +1033,7 @@ export default function App() {
               )}
 
               {/* YouTube paused state */}
-              {!isPlaying && sourceTab === "youtube" && currentSong.videoId && (
+              {!isPlaying && effectiveTab === "youtube" && currentSong.videoId && (
                 <div className="w-full h-[200px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2 relative overflow-hidden">
                   <img
                     src={`https://img.youtube.com/vi/${currentSong.videoId}/mqdefault.jpg`}
