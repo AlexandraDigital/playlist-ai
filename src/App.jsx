@@ -161,7 +161,7 @@ const extractYouTubeVideoId = (input) => {
 
 export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
-  const t = TRANSLATIONS[lang];
+  const t = TRANSLATIONS[lang] || TRANSLATIONS["en"];
 
   const [vibe, setVibe] = useState("");
   const [artist, setArtist] = useState("");
@@ -197,12 +197,16 @@ export default function App() {
   const audioRef = useRef();
   const ytIframeRef = useRef(null);
   const scIframeRef = useRef(null);
-  const active = playlists[currentPlaylist];
-  const currentSong = active.songs[currentIndex];
+
+  // Safe playlist access — guard against out-of-bounds index from bad localStorage state
+  const safePlaylistIndex = Math.min(Math.max(currentPlaylist, 0), playlists.length - 1);
+  const active = playlists[safePlaylistIndex] || { name: "My Playlist", songs: [] };
+  const safeCurrentIndex = Math.min(Math.max(currentIndex, 0), Math.max(active.songs.length - 1, 0));
+  const currentSong = active.songs[safeCurrentIndex];
 
   // When song changes: pick best tab (Spotify > SoundCloud > YouTube) + start playing
   useEffect(() => {
-    const s = playlists[currentPlaylist]?.songs[currentIndex];
+    const s = playlists[safePlaylistIndex]?.songs[safeCurrentIndex];
     if (s?.localFileUrl) setSourceTab("local");
     else if (s?.soundcloudUrl) setSourceTab("soundcloud");
     else if (s?.spotifyEmbedUrl) setSourceTab("spotify");
@@ -366,6 +370,11 @@ export default function App() {
       localStorage.removeItem("playerState");
     }
 
+    // Clamp restored indices to valid ranges
+    restoredPlaylist = Math.min(Math.max(restoredPlaylist, 0), restoredPlaylists.length - 1);
+    const restoredSongs = restoredPlaylists[restoredPlaylist]?.songs || [];
+    restoredIndex = Math.min(Math.max(restoredIndex, 0), Math.max(restoredSongs.length - 1, 0));
+
     // Check for shared playlist in URL hash — must run AFTER restore so it isn't overwritten
     const hash = window.location.hash;
     if (hash.startsWith("#share=")) {
@@ -397,18 +406,18 @@ export default function App() {
 
   const addSong = (s) => {
     const updated = [...playlists];
-    updated[currentPlaylist] = {
-      ...updated[currentPlaylist],
-      songs: [s, ...updated[currentPlaylist].songs],
+    updated[safePlaylistIndex] = {
+      ...updated[safePlaylistIndex],
+      songs: [s, ...updated[safePlaylistIndex].songs],
     };
     setPlaylists(updated);
   };
 
   const removeSong = (i) => {
     const updated = [...playlists];
-    const newSongs = [...updated[currentPlaylist].songs];
+    const newSongs = [...updated[safePlaylistIndex].songs];
     newSongs.splice(i, 1);
-    updated[currentPlaylist] = { ...updated[currentPlaylist], songs: newSongs };
+    updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs: newSongs };
     setPlaylists(updated);
     setCurrentIndex((prev) => {
       if (newSongs.length === 0) return 0;
@@ -427,7 +436,7 @@ export default function App() {
 
   const deletePlaylist = () => {
     if (playlists.length === 1) return alert(t.cantDelete);
-    const updated = playlists.filter((_, i) => i !== currentPlaylist);
+    const updated = playlists.filter((_, i) => i !== safePlaylistIndex);
     setPlaylists(updated);
     setCurrentPlaylist(0);
     setCurrentIndex(0);
@@ -442,7 +451,7 @@ export default function App() {
   const confirmRename = () => {
     if (renameValue.trim()) {
       const updated = [...playlists];
-      updated[currentPlaylist] = { ...updated[currentPlaylist], name: renameValue.trim() };
+      updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], name: renameValue.trim() };
       setPlaylists(updated);
     }
     setIsRenaming(false);
@@ -453,10 +462,10 @@ export default function App() {
   const handleDrop = (i) => {
     if (dragIndex === null || dragIndex === i) { setDragIndex(null); setDragOverIndex(null); return; }
     const updated = [...playlists];
-    const songs = [...updated[currentPlaylist].songs];
+    const songs = [...updated[safePlaylistIndex].songs];
     const [moved] = songs.splice(dragIndex, 1);
     songs.splice(i, 0, moved);
-    updated[currentPlaylist] = { ...updated[currentPlaylist], songs };
+    updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs };
     setPlaylists(updated);
     if (currentIndex === dragIndex) setCurrentIndex(i);
     else if (currentIndex > dragIndex && currentIndex <= i) setCurrentIndex(currentIndex - 1);
@@ -616,7 +625,7 @@ export default function App() {
         return;
       }
       const updated = [...playlists];
-      updated[currentPlaylist] = { ...updated[currentPlaylist], songs: results };
+      updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs: results };
       setPlaylists(updated);
       setCurrentIndex(0);
     } catch (e) {
@@ -627,7 +636,7 @@ export default function App() {
 
   const clearPlaylist = () => {
     const updated = [...playlists];
-    updated[currentPlaylist] = { ...updated[currentPlaylist], songs: [] };
+    updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs: [] };
     setPlaylists(updated);
     setCurrentIndex(0);
   };
@@ -681,7 +690,7 @@ export default function App() {
 
   // Play/pause toggle
   const togglePlay = () => {
-    const current = active.songs[currentIndex];
+    const current = active.songs[safeCurrentIndex];
     if (!current) return;
     // Local files: just toggle state — the native video/audio controls handle playback
     // Other sources: remount iframe to trigger autoplay
@@ -704,17 +713,21 @@ export default function App() {
   // Build Spotify embed URL with autoplay when playing
   const buildSpotifyUrl = (baseUrl) => {
     if (!baseUrl) return null;
-    const url = new URL(baseUrl);
-    if (isPlaying) url.searchParams.set("autoplay", "1");
-    return url.toString();
+    try {
+      const url = new URL(baseUrl);
+      if (isPlaying) url.searchParams.set("autoplay", "1");
+      return url.toString();
+    } catch {
+      return baseUrl;
+    }
   };
 
   // Build SoundCloud embed URL
   const buildSoundCloudUrl = (trackUrl) => {
     if (!trackUrl) return null;
     const encoded = encodeURIComponent(trackUrl);
-    const autoplay = isPlaying ? "true" : "false";
-    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplay}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
+    const autoplayParam = isPlaying ? "true" : "false";
+    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplayParam}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
   };
 
   const showingSpotify = effectiveTab === "spotify" && !!currentSong?.spotifyEmbedUrl;
@@ -1130,7 +1143,7 @@ export default function App() {
                     key={i}
                     onClick={() => { setCurrentPlaylist(i); setCurrentIndex(0); }}
                     className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium transition ${
-                      i === currentPlaylist
+                      i === safePlaylistIndex
                         ? "bg-purple-600 text-white"
                         : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                     }`}
@@ -1161,7 +1174,7 @@ export default function App() {
                 onDragEnd={handleDragEnd}
                 onClick={() => setCurrentIndex(i)}
                 className={`flex items-center gap-3 p-2 mb-1 rounded-xl cursor-pointer transition-all select-none ${
-                  i === currentIndex
+                  i === safeCurrentIndex
                     ? "bg-purple-900 border border-purple-500"
                     : dragOverIndex === i
                     ? "bg-gray-700 border border-dashed border-purple-400"
@@ -1212,7 +1225,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {i === currentIndex && (
+                {i === safeCurrentIndex && (
                   <span className="text-purple-400 text-xs shrink-0">
                     {isPlaying ? "▶" : "⏸"}
                   </span>
