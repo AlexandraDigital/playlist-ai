@@ -260,11 +260,13 @@ export default function App() {
         // YouTube IFrame API: state 0 = ended
         if (data.event === "onStateChange" && data.info === 0) {
           nextSongRef.current?.();
+          return;
         }
         // SoundCloud Widget API — check both possible event formats
         const scFinished =
           (data.soundcloud === true && data.method === "SOUND_FINISHED") ||
           (data.soundcloud === true && data.event === "finish") ||
+          (typeof data.method === "string" && data.method === "SOUND_FINISHED") ||
           (typeof e.data === "string" && e.data.includes("SOUND_FINISHED"));
         if (scFinished) {
           nextSongRef.current?.();
@@ -330,7 +332,31 @@ export default function App() {
   }, []); // eslint-disable-line
   // ──────────────────────────────────────────────────────────────────────────
 
+  // Subscribe to YouTube state-change events once the iframe loads
+  const handleYtLoad = () => {
+    try {
+      // Tell YouTube we're listening — this triggers it to start sending postMessage events
+      ytIframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "listening" }), "*"
+      );
+      ytIframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: "command", func: "addEventListener", args: ["onStateChange"] }), "*"
+      );
+    } catch {}
+  };
 
+  // Subscribe to SoundCloud finish event once the iframe loads
+  const handleScLoad = () => {
+    try {
+      // SC Widget API: subscribe to the finish/SOUND_FINISHED event
+      scIframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ method: "addEventListener", value: "finish" }), "*"
+      );
+      scIframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ method: "addEventListener", value: "SOUND_FINISHED" }), "*"
+      );
+    } catch {}
+  };
 
   const installApp = async () => {
     try {
@@ -1007,6 +1033,7 @@ export default function App() {
                     frameBorder="no"
                     src={buildSoundCloudUrl(currentSong.soundcloudUrl)}
                     allow="autoplay"
+                    onLoad={handleScLoad}
                   />
                   <p className="text-xs text-gray-500 text-center mt-1">{t.scRepeatNote}</p>
                 </>
@@ -1060,6 +1087,7 @@ export default function App() {
                   height="200"
                   src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&enablejsapi=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
                   allow="autoplay; encrypted-media"
+                  onLoad={handleYtLoad}
                 />
               )}
 
