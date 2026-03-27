@@ -923,14 +923,6 @@ export default function App() {
                 >🔁</button>
 
                 <button
-                  onClick={() => setAutoplay((a) => !a)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition ${
-                    autoplay ? "bg-purple-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
-                  }`}
-                  title="Autoplay next song"
-                >∞</button>
-
-                <button
                   onClick={nextSong}
                   className="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-xl transition"
                 >⏭</button>
@@ -1051,6 +1043,13 @@ export default function App() {
           <div className="flex gap-2">
             <button onClick={clearPlaylist} className="flex-1 bg-gray-800 hover:bg-gray-700 p-2 rounded-xl text-sm transition">
               {t.clear}
+            </button>
+            <button
+              onClick={() => setAutoplay((a) => !a)}
+              className={`flex-1 p-2 rounded-xl text-sm font-bold transition ${autoplay ? "bg-purple-600 text-white" : "bg-gray-800 hover:bg-gray-700 text-gray-300"}`}
+              title="Autoplay next song"
+            >
+              {t.autoplay}
             </button>
             <button onClick={sharePlaylist} className="flex-1 bg-gray-800 hover:bg-purple-700 p-2 rounded-xl text-sm transition">
               {t.share}
