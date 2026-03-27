@@ -261,27 +261,7 @@ export default function App() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  // Check for shared playlist in URL hash on mount
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash.startsWith("#share=")) return;
-    try {
-      const encoded = hash.slice(7);
-      const data = JSON.parse(atob(encoded));
-      if (data?.name && Array.isArray(data?.songs)) {
-        const t = TRANSLATIONS[localStorage.getItem("lang") || "en"];
-        if (window.confirm(t.shareImport(data.name, data.songs.length))) {
-          setPlaylists((prev) => {
-            const updated = [...prev, data];
-            setCurrentPlaylist(updated.length - 1);
-            setCurrentIndex(0);
-            return updated;
-          });
-        }
-      }
-    } catch {}
-    window.history.replaceState(null, "", window.location.pathname);
-  }, []); // eslint-disable-line
+
 
   const installApp = async () => {
     try {
@@ -304,19 +284,45 @@ export default function App() {
   };
 
   useEffect(() => {
+    let restoredPlaylists = [{ name: "My Playlist", songs: [] }];
+    let restoredPlaylist = 0;
+    let restoredIndex = 0;
     try {
       const saved = localStorage.getItem("library");
       const savedState = localStorage.getItem("playerState");
-      if (saved) setPlaylists(JSON.parse(saved));
+      if (saved) restoredPlaylists = JSON.parse(saved);
       if (savedState) {
         const state = JSON.parse(savedState);
-        if (state.currentPlaylist !== undefined) setCurrentPlaylist(state.currentPlaylist);
-        if (state.currentIndex !== undefined) setCurrentIndex(state.currentIndex);
+        if (state.currentPlaylist !== undefined) restoredPlaylist = state.currentPlaylist;
+        if (state.currentIndex !== undefined) restoredIndex = state.currentIndex;
       }
     } catch {
       localStorage.removeItem("library");
       localStorage.removeItem("playerState");
     }
+
+    // Check for shared playlist in URL hash — must run AFTER restore so it isn't overwritten
+    const hash = window.location.hash;
+    if (hash.startsWith("#share=")) {
+      try {
+        const encoded = hash.slice(7);
+        const decoded = decodeURIComponent(escape(atob(encoded)));
+        const data = JSON.parse(decoded);
+        if (data?.name && Array.isArray(data?.songs)) {
+          const tLang = TRANSLATIONS[localStorage.getItem("lang") || "en"];
+          if (window.confirm(tLang.shareImport(data.name, data.songs.length))) {
+            restoredPlaylists = [...restoredPlaylists, data];
+            restoredPlaylist = restoredPlaylists.length - 1;
+            restoredIndex = 0;
+          }
+        }
+      } catch {}
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+
+    setPlaylists(restoredPlaylists);
+    setCurrentPlaylist(restoredPlaylist);
+    setCurrentIndex(restoredIndex);
   }, []);
 
   useEffect(() => {
