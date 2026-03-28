@@ -161,7 +161,7 @@ const extractYouTubeVideoId = (input) => {
 
 export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
-  const t = TRANSLATIONS[lang] || TRANSLATIONS["en"];
+  const t = TRANSLATIONS[lang];
 
   const [vibe, setVibe] = useState("");
   const [artist, setArtist] = useState("");
@@ -197,16 +197,12 @@ export default function App() {
   const audioRef = useRef();
   const ytIframeRef = useRef(null);
   const scIframeRef = useRef(null);
-
-  // Safe playlist access — guard against out-of-bounds index from bad localStorage state
-  const safePlaylistIndex = Math.min(Math.max(currentPlaylist, 0), playlists.length - 1);
-  const active = playlists[safePlaylistIndex] || { name: "My Playlist", songs: [] };
-  const safeCurrentIndex = Math.min(Math.max(currentIndex, 0), Math.max(active.songs.length - 1, 0));
-  const currentSong = active.songs[safeCurrentIndex];
+  const active = playlists[currentPlaylist] || playlists[0] || { name: 'My Playlist', songs: [] };
+  const currentSong = (active.songs || [])[currentIndex];
 
   // When song changes: pick best tab (Spotify > SoundCloud > YouTube) + start playing
   useEffect(() => {
-    const s = playlists[safePlaylistIndex]?.songs[safeCurrentIndex];
+    const s = playlists[currentPlaylist]?.songs[currentIndex];
     if (s?.localFileUrl) setSourceTab("local");
     else if (s?.soundcloudUrl) setSourceTab("soundcloud");
     else if (s?.spotifyEmbedUrl) setSourceTab("spotify");
@@ -260,13 +256,11 @@ export default function App() {
         // YouTube IFrame API: state 0 = ended
         if (data.event === "onStateChange" && data.info === 0) {
           nextSongRef.current?.();
-          return;
         }
         // SoundCloud Widget API — check both possible event formats
         const scFinished =
           (data.soundcloud === true && data.method === "SOUND_FINISHED") ||
           (data.soundcloud === true && data.event === "finish") ||
-          (typeof data.method === "string" && data.method === "SOUND_FINISHED") ||
           (typeof e.data === "string" && e.data.includes("SOUND_FINISHED"));
         if (scFinished) {
           nextSongRef.current?.();
@@ -332,31 +326,7 @@ export default function App() {
   }, []); // eslint-disable-line
   // ──────────────────────────────────────────────────────────────────────────
 
-  // Subscribe to YouTube state-change events once the iframe loads
-  const handleYtLoad = () => {
-    try {
-      // Tell YouTube we're listening — this triggers it to start sending postMessage events
-      ytIframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ event: "listening" }), "*"
-      );
-      ytIframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ event: "command", func: "addEventListener", args: ["onStateChange"] }), "*"
-      );
-    } catch {}
-  };
 
-  // Subscribe to SoundCloud finish event once the iframe loads
-  const handleScLoad = () => {
-    try {
-      // SC Widget API: subscribe to the finish/SOUND_FINISHED event
-      scIframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ method: "addEventListener", value: "finish" }), "*"
-      );
-      scIframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ method: "addEventListener", value: "SOUND_FINISHED" }), "*"
-      );
-    } catch {}
-  };
 
   const installApp = async () => {
     try {
@@ -396,11 +366,6 @@ export default function App() {
       localStorage.removeItem("playerState");
     }
 
-    // Clamp restored indices to valid ranges
-    restoredPlaylist = Math.min(Math.max(restoredPlaylist, 0), restoredPlaylists.length - 1);
-    const restoredSongs = restoredPlaylists[restoredPlaylist]?.songs || [];
-    restoredIndex = Math.min(Math.max(restoredIndex, 0), Math.max(restoredSongs.length - 1, 0));
-
     // Check for shared playlist in URL hash — must run AFTER restore so it isn't overwritten
     const hash = window.location.hash;
     if (hash.startsWith("#share=")) {
@@ -432,18 +397,18 @@ export default function App() {
 
   const addSong = (s) => {
     const updated = [...playlists];
-    updated[safePlaylistIndex] = {
-      ...updated[safePlaylistIndex],
-      songs: [s, ...updated[safePlaylistIndex].songs],
+    updated[currentPlaylist] = {
+      ...updated[currentPlaylist],
+      songs: [s, ...updated[currentPlaylist].songs],
     };
     setPlaylists(updated);
   };
 
   const removeSong = (i) => {
     const updated = [...playlists];
-    const newSongs = [...updated[safePlaylistIndex].songs];
+    const newSongs = [...updated[currentPlaylist].songs];
     newSongs.splice(i, 1);
-    updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs: newSongs };
+    updated[currentPlaylist] = { ...updated[currentPlaylist], songs: newSongs };
     setPlaylists(updated);
     setCurrentIndex((prev) => {
       if (newSongs.length === 0) return 0;
@@ -462,7 +427,7 @@ export default function App() {
 
   const deletePlaylist = () => {
     if (playlists.length === 1) return alert(t.cantDelete);
-    const updated = playlists.filter((_, i) => i !== safePlaylistIndex);
+    const updated = playlists.filter((_, i) => i !== currentPlaylist);
     setPlaylists(updated);
     setCurrentPlaylist(0);
     setCurrentIndex(0);
@@ -477,7 +442,7 @@ export default function App() {
   const confirmRename = () => {
     if (renameValue.trim()) {
       const updated = [...playlists];
-      updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], name: renameValue.trim() };
+      updated[currentPlaylist] = { ...updated[currentPlaylist], name: renameValue.trim() };
       setPlaylists(updated);
     }
     setIsRenaming(false);
@@ -488,10 +453,10 @@ export default function App() {
   const handleDrop = (i) => {
     if (dragIndex === null || dragIndex === i) { setDragIndex(null); setDragOverIndex(null); return; }
     const updated = [...playlists];
-    const songs = [...updated[safePlaylistIndex].songs];
+    const songs = [...updated[currentPlaylist].songs];
     const [moved] = songs.splice(dragIndex, 1);
     songs.splice(i, 0, moved);
-    updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs };
+    updated[currentPlaylist] = { ...updated[currentPlaylist], songs };
     setPlaylists(updated);
     if (currentIndex === dragIndex) setCurrentIndex(i);
     else if (currentIndex > dragIndex && currentIndex <= i) setCurrentIndex(currentIndex - 1);
@@ -651,7 +616,7 @@ export default function App() {
         return;
       }
       const updated = [...playlists];
-      updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs: results };
+      updated[currentPlaylist] = { ...updated[currentPlaylist], songs: results };
       setPlaylists(updated);
       setCurrentIndex(0);
     } catch (e) {
@@ -662,7 +627,7 @@ export default function App() {
 
   const clearPlaylist = () => {
     const updated = [...playlists];
-    updated[safePlaylistIndex] = { ...updated[safePlaylistIndex], songs: [] };
+    updated[currentPlaylist] = { ...updated[currentPlaylist], songs: [] };
     setPlaylists(updated);
     setCurrentIndex(0);
   };
@@ -716,7 +681,7 @@ export default function App() {
 
   // Play/pause toggle
   const togglePlay = () => {
-    const current = active.songs[safeCurrentIndex];
+    const current = active.songs[currentIndex];
     if (!current) return;
     // Local files: just toggle state — the native video/audio controls handle playback
     // Other sources: remount iframe to trigger autoplay
@@ -739,21 +704,17 @@ export default function App() {
   // Build Spotify embed URL with autoplay when playing
   const buildSpotifyUrl = (baseUrl) => {
     if (!baseUrl) return null;
-    try {
-      const url = new URL(baseUrl);
-      if (isPlaying) url.searchParams.set("autoplay", "1");
-      return url.toString();
-    } catch {
-      return baseUrl;
-    }
+    const url = new URL(baseUrl);
+    if (isPlaying) url.searchParams.set("autoplay", "1");
+    return url.toString();
   };
 
   // Build SoundCloud embed URL
   const buildSoundCloudUrl = (trackUrl) => {
     if (!trackUrl) return null;
     const encoded = encodeURIComponent(trackUrl);
-    const autoplayParam = isPlaying ? "true" : "false";
-    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplayParam}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
+    const autoplay = isPlaying ? "true" : "false";
+    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplay}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
   };
 
   const showingSpotify = effectiveTab === "spotify" && !!currentSong?.spotifyEmbedUrl;
@@ -1033,7 +994,6 @@ export default function App() {
                     frameBorder="no"
                     src={buildSoundCloudUrl(currentSong.soundcloudUrl)}
                     allow="autoplay"
-                    onLoad={handleScLoad}
                   />
                   <p className="text-xs text-gray-500 text-center mt-1">{t.scRepeatNote}</p>
                 </>
@@ -1087,7 +1047,6 @@ export default function App() {
                   height="200"
                   src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&enablejsapi=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
                   allow="autoplay; encrypted-media"
-                  onLoad={handleYtLoad}
                 />
               )}
 
@@ -1111,6 +1070,11 @@ export default function App() {
             <button onClick={clearPlaylist} className="flex-1 bg-gray-800 hover:bg-gray-700 p-2 rounded-xl text-sm transition">
               {t.clear}
             </button>
+            <button
+              onClick={() => setAutoplay((a) => !a)}
+              className={`flex-1 p-2 rounded-xl text-sm font-bold transition ${autoplay ? "bg-purple-600 text-white" : "bg-gray-800 hover:bg-gray-700 text-gray-300"}`}
+              title="Autoplay next song"
+            >∞ Auto</button>
             <button onClick={sharePlaylist} className="flex-1 bg-gray-800 hover:bg-purple-700 p-2 rounded-xl text-sm transition">
               {t.share}
             </button>
@@ -1171,7 +1135,7 @@ export default function App() {
                     key={i}
                     onClick={() => { setCurrentPlaylist(i); setCurrentIndex(0); }}
                     className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium transition ${
-                      i === safePlaylistIndex
+                      i === currentPlaylist
                         ? "bg-purple-600 text-white"
                         : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                     }`}
@@ -1202,7 +1166,7 @@ export default function App() {
                 onDragEnd={handleDragEnd}
                 onClick={() => setCurrentIndex(i)}
                 className={`flex items-center gap-3 p-2 mb-1 rounded-xl cursor-pointer transition-all select-none ${
-                  i === safeCurrentIndex
+                  i === currentIndex
                     ? "bg-purple-900 border border-purple-500"
                     : dragOverIndex === i
                     ? "bg-gray-700 border border-dashed border-purple-400"
@@ -1253,7 +1217,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {i === safeCurrentIndex && (
+                {i === currentIndex && (
                   <span className="text-purple-400 text-xs shrink-0">
                     {isPlaying ? "▶" : "⏸"}
                   </span>
