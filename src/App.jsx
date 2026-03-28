@@ -851,12 +851,16 @@ export default function App() {
                 disabled={!repeatSupported}
               >🔁</button>
 
-              {/* ∞ Auto — pressing it immediately skips to the next song */}
+              {/* ∞ Auto — toggles continuous autoplay mode */}
               <button
-                onClick={nextSong}
+                onClick={() => setAutoplay((a) => !a)}
                 disabled={!currentSong || active.songs.length < 2}
-                className="px-3 py-2 rounded-xl text-sm font-bold transition bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Skip to next song"
+                className={`px-3 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                  autoplay
+                    ? "bg-purple-600 hover:bg-purple-500 text-white ring-2 ring-purple-300"
+                    : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                }`}
+                title={autoplay ? "Autoplay ON — songs advance automatically" : "Autoplay OFF — click to enable"}
               >∞</button>
 
               <button
@@ -865,6 +869,9 @@ export default function App() {
                 className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 rounded-xl transition"
               >⏭</button>
             </div>
+            {autoplay && (
+              <p className="text-center text-xs text-purple-400 mt-2">∞ Autoplay on — songs will advance automatically</p>
+            )}
           </div>
 
           {/* Now Playing */}
@@ -992,7 +999,7 @@ export default function App() {
                     style={{ maxHeight: "300px" }}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
-                    onEnded={() => { if (autoplay && !repeat) nextSong(); }}
+                    onEnded={() => { if (autoplayRef.current && !repeat) nextSong(); }}
                   />
                 ) : (
                   <audio
@@ -1004,7 +1011,7 @@ export default function App() {
                     className="w-full mt-2"
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
-                    onEnded={() => { if (autoplay && !repeat) nextSong(); }}
+                    onEnded={() => { if (autoplayRef.current && !repeat) nextSong(); }}
                   />
                 )
               )}
