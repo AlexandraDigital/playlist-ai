@@ -200,7 +200,7 @@ export default function App() {
   const active = playlists[currentPlaylist] || playlists[0] || { name: 'My Playlist', songs: [] };
   const currentSong = (active.songs || [])[currentIndex];
 
-  // When song changes: pick best tab (Spotify > SoundCloud > YouTube) + start playing
+  // When song changes: pick best tab (SoundCloud > Spotify > YouTube) + start playing
   useEffect(() => {
     const s = playlists[currentPlaylist]?.songs[currentIndex];
     if (s?.localFileUrl) setSourceTab("local");
@@ -262,14 +262,13 @@ export default function App() {
         const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (!data) return;
         // YouTube IFrame API: state 0 = ended
-        // Handles both formats: {event:"onStateChange",info:0} and {event:"infoDelivery",info:{playerState:0}}
         if (data.event === "onStateChange" && data.info === 0) {
           nextSongRef.current?.();
         }
         if (data.event === "infoDelivery" && data.info?.playerState === 0) {
           nextSongRef.current?.();
         }
-        // SoundCloud Widget API — check both possible event formats
+        // SoundCloud Widget API
         const scFinished =
           (data.soundcloud === true && data.method === "SOUND_FINISHED") ||
           (data.soundcloud === true && data.event === "finish") ||
@@ -284,7 +283,6 @@ export default function App() {
   }, []);
 
   // ── Media Session API ──────────────────────────────────────────────────────
-  // 1) Update metadata on the lock screen whenever the song changes
   useEffect(() => {
     if (!("mediaSession" in navigator) || !currentSong) return;
     try {
@@ -298,7 +296,6 @@ export default function App() {
     } catch {}
   }, [currentSong]);
 
-  // 2) Sync playback state so the OS knows if we're playing or paused
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     try {
@@ -306,14 +303,12 @@ export default function App() {
     } catch {}
   }, [isPlaying]);
 
-  // 3) Register lock screen / headphone / Bluetooth action handlers (once)
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
     const handlers = {
       play: () => { setIsPlaying(true); setPlayerKey((k) => k + 1); },
       pause: () => {
         setIsPlaying(false);
-        // Also tell the active iframe to pause
         try {
           ytIframeRef.current?.contentWindow?.postMessage(
             JSON.stringify({ event: "command", func: "pauseVideo", args: [] }), "*"
@@ -337,8 +332,6 @@ export default function App() {
     };
   }, []); // eslint-disable-line
   // ──────────────────────────────────────────────────────────────────────────
-
-
 
   const installApp = async () => {
     try {
@@ -378,7 +371,7 @@ export default function App() {
       localStorage.removeItem("playerState");
     }
 
-    // Check for shared playlist in URL hash — must run AFTER restore so it isn't overwritten
+    // Check for shared playlist in URL hash
     const hash = window.location.hash;
     if (hash.startsWith("#share=")) {
       try {
@@ -487,7 +480,6 @@ export default function App() {
     return res.json();
   };
 
-  // Search YouTube + Odesli (Spotify + SoundCloud), return a song object
   const fetchSong = async (query) => {
     if (ytQuotaRef.current) {
       throw new Error("YouTube quota exceeded. Add songs manually by pasting a Spotify URL.");
@@ -537,7 +529,6 @@ export default function App() {
   };
 
   const searchSong = async () => {
-    // Check if user pasted a YouTube URL
     const youtubeId = extractYouTubeVideoId(artist) || extractYouTubeVideoId(song);
     if (youtubeId) {
       let title = "YouTube Video";
@@ -549,7 +540,7 @@ export default function App() {
           const oembedData = await oembedRes.json();
           title = oembedData.title || title;
         }
-      } catch (_) { /* oEmbed failed — use generic title */ }
+      } catch (_) {}
       addSong({
         title,
         videoId: youtubeId,
@@ -562,19 +553,15 @@ export default function App() {
       return;
     }
 
-    // Check if user pasted a Spotify URL in the artist field
     const spotifyId = extractSpotifyTrackId(artist) || extractSpotifyTrackId(song);
     if (spotifyId) {
       const spotifyTrackUrl = `https://open.spotify.com/track/${spotifyId}`;
       const title = (artist && !extractSpotifyTrackId(artist) ? artist + " - " : "") + (song && !extractSpotifyTrackId(song) ? song : "Spotify Track");
-      // Look up SoundCloud via Odesli as fallback
       let soundcloudUrl = null;
       try {
         const scData = await safeFetchJSON(`/search?spotifyUrl=${encodeURIComponent(spotifyTrackUrl)}`);
         soundcloudUrl = scData.soundcloudUrl || null;
-      } catch (e) {
-        // Odesli lookup failed — that's okay, Spotify embed still works
-      }
+      } catch (e) {}
       addSong({
         title,
         videoId: null,
@@ -662,15 +649,12 @@ export default function App() {
     };
     try {
       if (navigator.share && /mobile|android|iphone|ipad/i.test(navigator.userAgent)) {
-        // Native share sheet on mobile
         await navigator.share({ title: active.name, url });
       } else {
-        // Desktop: copy to clipboard + show in-app toast
         try {
           await navigator.clipboard.writeText(url);
           showToast();
         } catch {
-          // Clipboard blocked — show prompt so user can copy manually
           prompt(t.shareCopied, url);
         }
       }
@@ -691,42 +675,37 @@ export default function App() {
     setCurrentIndex((prev) => (prev - 1 + active.songs.length) % active.songs.length);
   };
 
-  // Play/pause toggle
   const togglePlay = () => {
     const current = active.songs[currentIndex];
     if (!current) return;
-    // Local files: just toggle state — the native video/audio controls handle playback
-    // Other sources: remount iframe to trigger autoplay
     if (!isPlaying && current.source !== "local") {
       setPlayerKey((k) => k + 1);
     }
     setIsPlaying(!isPlaying);
   };
 
-  // Derive which tabs are available for current song
   const availableTabs = [
     currentSong?.localFileUrl ? "local" : null,
     currentSong?.soundcloudUrl ? "soundcloud" : null,
     currentSong?.spotifyEmbedUrl ? "spotify" : null,
     currentSong?.videoId ? "youtube" : null,
   ].filter(Boolean);
-  // effectiveTab: use selected tab if available, otherwise fall back to first available
   const effectiveTab = availableTabs.includes(sourceTab) ? sourceTab : (availableTabs[0] || "youtube");
 
-  // Build Spotify embed URL with autoplay when playing
   const buildSpotifyUrl = (baseUrl) => {
     if (!baseUrl) return null;
-    const url = new URL(baseUrl);
-    if (isPlaying) url.searchParams.set("autoplay", "1");
-    return url.toString();
+    try {
+      const url = new URL(baseUrl);
+      if (isPlaying) url.searchParams.set("autoplay", "1");
+      return url.toString();
+    } catch { return baseUrl; }
   };
 
-  // Build SoundCloud embed URL
   const buildSoundCloudUrl = (trackUrl) => {
     if (!trackUrl) return null;
     const encoded = encodeURIComponent(trackUrl);
-    const autoplay = isPlaying ? "true" : "false";
-    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplay}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
+    const autoplayParam = isPlaying ? "true" : "false";
+    return `https://w.soundcloud.com/player/?url=${encoded}&color=%23ff5500&auto_play=${autoplayParam}&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
   };
 
   const showingSpotify = effectiveTab === "spotify" && !!currentSong?.spotifyEmbedUrl;
@@ -735,14 +714,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
-      {/* Share copied toast */}
       {shareCopiedToast && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-purple-700 text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-semibold flex items-center gap-2 animate-bounce">
           <span>🔗</span>
           <span>{t.shareCopied}</span>
         </div>
       )}
-      {/* YouTube quota warning banner */}
       {ytQuotaExceeded && (
         <div className="bg-yellow-900/60 border-b border-yellow-700 text-yellow-300 text-sm text-center px-4 py-2 flex items-center justify-center gap-2">
           <span>⚠️</span>
@@ -757,8 +734,6 @@ export default function App() {
             {t.appName}
           </h1>
         </div>
-
-        {/* Language switcher */}
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1">
           {LANG_OPTIONS.map((opt) => (
             <button
@@ -777,13 +752,12 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main two-column layout */}
       <div className="flex flex-1 gap-4 p-4 max-w-6xl mx-auto w-full flex-col lg:flex-row">
 
-        {/* ── LEFT COLUMN: Controls + Player ── */}
+        {/* ── LEFT COLUMN ── */}
         <div className="flex flex-col gap-3 lg:w-80 shrink-0">
 
-          {/* AI Generate card */}
+          {/* AI Generate */}
           <div className="bg-gray-900 rounded-2xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">{t.aiGenerate}</p>
             <input
@@ -804,7 +778,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Add Song card */}
+          {/* Add Song */}
           <div className="bg-gray-900 rounded-2xl p-4">
             <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">{t.addSong}</p>
             <input
@@ -842,7 +816,7 @@ export default function App() {
             <input ref={fileInputRef} type="file" accept="audio/*,video/*" onChange={handleFileUpload} hidden />
           </div>
 
-          {/* Playback controls — always visible */}
+          {/* Playback controls */}
           <div className="bg-gray-900 rounded-2xl p-3">
             <div className="flex justify-center gap-3">
               <button
@@ -877,12 +851,12 @@ export default function App() {
                 disabled={!repeatSupported}
               >🔁</button>
 
+              {/* ∞ Auto — pressing it immediately skips to the next song */}
               <button
-                onClick={() => setAutoplay((a) => !a)}
-                className={`px-3 py-2 rounded-xl text-sm font-bold transition ${
-                  autoplay ? "bg-purple-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
-                }`}
-                title="Autoplay next song"
+                onClick={nextSong}
+                disabled={!currentSong || active.songs.length < 2}
+                className="px-3 py-2 rounded-xl text-sm font-bold transition bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Skip to next song"
               >∞</button>
 
               <button
@@ -893,12 +867,11 @@ export default function App() {
             </div>
           </div>
 
-          {/* Now Playing card */}
+          {/* Now Playing */}
           {currentSong && (
             <div className="bg-gray-900 rounded-2xl p-4">
               <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">{t.nowPlaying}</p>
 
-              {/* YouTube thumbnail — shown when on YouTube tab */}
               {effectiveTab === "youtube" && currentSong.videoId && (
                 <div className="relative w-full mb-3 rounded-xl overflow-hidden">
                   <img
@@ -911,70 +884,48 @@ export default function App() {
                 </div>
               )}
 
-              {/* Title for spotify-only or local */}
               {(currentSong.source === "spotify" || currentSong.source === "local") && (
                 <p className="text-sm font-medium truncate mb-2">{currentSong.title}</p>
               )}
 
-              {/* Dynamic tab switcher — only when more than 1 source available */}
               {availableTabs.length > 1 && (
                 <div className="flex gap-1.5 mb-3">
                   {availableTabs.includes("local") && (
                     <button
                       onClick={() => { setSourceTab("local"); setPlayerKey((k) => k + 1); }}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
-                        sourceTab === "local"
-                          ? "bg-purple-600 text-white"
-                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                        sourceTab === "local" ? "bg-purple-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                       }`}
-                    >
-                      {t.tabLocalFile}
-                    </button>
+                    >{t.tabLocalFile}</button>
                   )}
                   {availableTabs.includes("spotify") && (
                     <button
                       onClick={() => { setSourceTab("spotify"); setPlayerKey((k) => k + 1); }}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
-                        sourceTab === "spotify"
-                          ? "bg-[#1db954] text-black"
-                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                        sourceTab === "spotify" ? "bg-[#1db954] text-black" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                       }`}
-                    >
-                      {t.tabSpotify}
-                    </button>
+                    >{t.tabSpotify}</button>
                   )}
                   {availableTabs.includes("soundcloud") && (
                     <button
                       onClick={() => { setSourceTab("soundcloud"); setPlayerKey((k) => k + 1); }}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
-                        sourceTab === "soundcloud"
-                          ? "bg-[#ff5500] text-white"
-                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                        sourceTab === "soundcloud" ? "bg-[#ff5500] text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                       }`}
-                    >
-                      {t.tabSoundCloud}
-                    </button>
+                    >{t.tabSoundCloud}</button>
                   )}
                   {availableTabs.includes("youtube") && (
                     <button
                       onClick={() => { setSourceTab("youtube"); setPlayerKey((k) => k + 1); }}
                       className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition ${
-                        sourceTab === "youtube"
-                          ? "bg-red-600 text-white"
-                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                        sourceTab === "youtube" ? "bg-red-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                       }`}
-                    >
-                      {t.tabYouTube}
-                    </button>
+                    >{t.tabYouTube}</button>
                   )}
                 </div>
               )}
 
-
-
-              {/* ── Players ── */}
-
-              {/* ── SPOTIFY PLAYER ── */}
+              {/* SPOTIFY */}
               {isPlaying && showingSpotify && currentSong.spotifyEmbedUrl && (
                 <>
                   <iframe
@@ -988,19 +939,14 @@ export default function App() {
                   <p className="text-xs text-gray-500 text-center mt-1 mb-2">{t.spotifyRepeatNote}</p>
                 </>
               )}
-
-              {/* Spotify paused state */}
               {!isPlaying && showingSpotify && currentSong.spotifyEmbedUrl && (
-                <>
-                  <div className="w-full h-[152px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2 mb-2">
-                    <span className="text-4xl text-[#1db954]">♫</span>
-                    <p className="text-xs text-gray-400">Press ▶ to play</p>
-                  </div>
-
-                </>
+                <div className="w-full h-[152px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2 mb-2">
+                  <span className="text-4xl text-[#1db954]">♫</span>
+                  <p className="text-xs text-gray-400">Press ▶ to play</p>
+                </div>
               )}
 
-              {/* ── SOUNDCLOUD PLAYER ── */}
+              {/* SOUNDCLOUD */}
               {isPlaying && showingSoundCloud && currentSong.soundcloudUrl && (
                 <>
                   <iframe
@@ -1013,7 +959,6 @@ export default function App() {
                     src={buildSoundCloudUrl(currentSong.soundcloudUrl)}
                     allow="autoplay"
                     onLoad={() => {
-                      // Bind FINISH event via SoundCloud Widget API
                       try {
                         if (!window.SC || !scIframeRef.current) return;
                         const widget = window.SC.Widget(scIframeRef.current);
@@ -1026,8 +971,6 @@ export default function App() {
                   <p className="text-xs text-gray-500 text-center mt-1">{t.scRepeatNote}</p>
                 </>
               )}
-
-              {/* SoundCloud paused state */}
               {!isPlaying && showingSoundCloud && currentSong.soundcloudUrl && (
                 <div className="w-full h-[166px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2">
                   <span className="text-4xl text-[#ff5500]">☁</span>
@@ -1035,7 +978,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* ── LOCAL FILE PLAYER ── */}
+              {/* LOCAL FILE */}
               {effectiveTab === "local" && currentSong.localFileUrl && (
                 currentSong.localFileType?.startsWith("video/") ? (
                   <video
@@ -1066,7 +1009,7 @@ export default function App() {
                 )
               )}
 
-              {/* ── YOUTUBE PLAYER ── */}
+              {/* YOUTUBE */}
               {isPlaying && effectiveTab === "youtube" && currentSong.videoId && (
                 <iframe
                   ref={ytIframeRef}
@@ -1076,7 +1019,6 @@ export default function App() {
                   src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&enablejsapi=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
                   allow="autoplay; encrypted-media"
                   onLoad={() => {
-                    // Tell the YouTube iframe we're listening — required to receive onStateChange events
                     try {
                       ytIframeRef.current?.contentWindow?.postMessage(
                         JSON.stringify({ event: "listening", id: 1 }), "*"
@@ -1085,8 +1027,6 @@ export default function App() {
                   }}
                 />
               )}
-
-              {/* YouTube paused state */}
               {!isPlaying && effectiveTab === "youtube" && currentSong.videoId && (
                 <div className="w-full h-[200px] bg-gray-800 rounded-xl flex flex-col items-center justify-center gap-2 relative overflow-hidden">
                   <img
@@ -1106,7 +1046,6 @@ export default function App() {
             <button onClick={clearPlaylist} className="flex-1 bg-gray-800 hover:bg-gray-700 p-2 rounded-xl text-sm transition">
               {t.clear}
             </button>
-
             <button onClick={sharePlaylist} className="flex-1 bg-gray-800 hover:bg-purple-700 p-2 rounded-xl text-sm transition">
               {t.share}
             </button>
@@ -1118,10 +1057,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── RIGHT COLUMN: Playlist panel ── */}
+        {/* ── RIGHT COLUMN: Playlist ── */}
         <div className="flex flex-col flex-1 bg-gray-900 rounded-2xl overflow-hidden min-h-[400px]">
-
-          {/* Playlist header */}
           <div className="p-4 border-b border-gray-800">
             <div className="flex items-center gap-2 mb-2">
               {isRenaming ? (
@@ -1136,30 +1073,11 @@ export default function App() {
               ) : (
                 <h2 className="flex-1 text-lg font-bold truncate">{active.name}</h2>
               )}
-              <button
-                onClick={startRename}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm transition"
-                title={t.rename}
-              >✏️</button>
-              <button
-                onClick={sharePlaylist}
-                className="hidden lg:block bg-gray-700 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm transition"
-                title={t.share}
-              >🔗</button>
-              <button
-                onClick={newPlaylist}
-                className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm font-bold transition"
-                title={t.newPlaylist}
-              >+</button>
-
-              <button
-                onClick={deletePlaylist}
-                className="bg-gray-700 hover:bg-red-900 px-3 py-1 rounded-lg text-sm transition"
-                title={t.deletePlaylist}
-              >🗑</button>
+              <button onClick={startRename} className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm transition" title={t.rename}>✏️</button>
+              <button onClick={sharePlaylist} className="hidden lg:block bg-gray-700 hover:bg-purple-700 px-3 py-1 rounded-lg text-sm transition" title={t.share}>🔗</button>
+              <button onClick={newPlaylist} className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg text-sm font-bold transition" title={t.newPlaylist}>+</button>
+              <button onClick={deletePlaylist} className="bg-gray-700 hover:bg-red-900 px-3 py-1 rounded-lg text-sm transition" title={t.deletePlaylist}>🗑</button>
             </div>
-
-            {/* Playlist tabs */}
             {playlists.length > 1 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
                 {playlists.map((p, i) => (
@@ -1167,19 +1085,14 @@ export default function App() {
                     key={i}
                     onClick={() => { setCurrentPlaylist(i); setCurrentIndex(0); }}
                     className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium transition ${
-                      i === currentPlaylist
-                        ? "bg-purple-600 text-white"
-                        : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                      i === currentPlaylist ? "bg-purple-600 text-white" : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                     }`}
-                  >
-                    {p.name}
-                  </button>
+                  >{p.name}</button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Song list */}
           <div className="flex-1 overflow-y-auto p-3">
             {active.songs.length === 0 && (
               <div className="flex flex-col items-center justify-center h-48 text-gray-600">
@@ -1187,7 +1100,6 @@ export default function App() {
                 <p className="text-sm">{t.noSongs}</p>
               </div>
             )}
-
             {active.songs.map((s, i) => (
               <div
                 key={`${s.videoId || s.spotifyEmbedUrl || s.localFileUrl || s.url || s.title}-${i}`}
@@ -1205,7 +1117,6 @@ export default function App() {
                     : "bg-gray-800 hover:bg-gray-700"
                 } ${dragIndex === i ? "opacity-30" : ""}`}
               >
-                {/* Thumbnail / icon */}
                 {s.videoId ? (
                   <div className="relative w-14 h-10 shrink-0">
                     <img
@@ -1230,58 +1141,36 @@ export default function App() {
                     <span className="text-gray-400">📁</span>
                   </div>
                 )}
-
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate leading-tight">{s.title}</p>
                   <div className="flex gap-1 mt-0.5 flex-wrap">
-                    {s.spotifyEmbedUrl && (
-                      <span className="text-[10px] text-green-400 font-medium">Spotify</span>
-                    )}
-                    {s.soundcloudUrl && (
-                      <span className="text-[10px] text-orange-400 font-medium">SoundCloud</span>
-                    )}
-                    {s.videoId && (
-                      <span className="text-[10px] text-red-400 font-medium">YouTube</span>
-                    )}
-                    {s.source === "local" && (
-                      <span className="text-[10px] text-blue-400 font-medium">local</span>
-                    )}
+                    {s.spotifyEmbedUrl && <span className="text-[10px] text-green-400 font-medium">Spotify</span>}
+                    {s.soundcloudUrl && <span className="text-[10px] text-orange-400 font-medium">SoundCloud</span>}
+                    {s.videoId && <span className="text-[10px] text-red-400 font-medium">YouTube</span>}
+                    {s.source === "local" && <span className="text-[10px] text-blue-400 font-medium">local</span>}
                   </div>
                 </div>
-
                 {i === currentIndex && (
-                  <span className="text-purple-400 text-xs shrink-0">
-                    {isPlaying ? "▶" : "⏸"}
-                  </span>
+                  <span className="text-purple-400 text-xs shrink-0">{isPlaying ? "▶" : "⏸"}</span>
                 )}
-
-                <span className="text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 text-lg px-1" title={t.dragToReorder}>
-                  ⠿
-                </span>
-
+                <span className="text-gray-600 hover:text-gray-400 cursor-grab active:cursor-grabbing shrink-0 text-lg px-1" title={t.dragToReorder}>⠿</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeSong(i); }}
                   className="text-gray-600 hover:text-red-400 shrink-0 transition"
                   title={t.remove}
-                >
-                  ✕
-                </button>
+                >✕</button>
               </div>
             ))}
           </div>
 
-          {/* Footer */}
           <div className="px-4 py-2 border-t border-gray-800 flex items-center justify-between">
-            <span className="text-xs text-gray-600">
-              {t.songs(active.songs.length)}
-            </span>
+            <span className="text-xs text-gray-600">{t.songs(active.songs.length)}</span>
             <span className="text-xs text-green-600 flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span>
               {t.autosaved}
             </span>
           </div>
         </div>
-
       </div>
     </div>
   );
