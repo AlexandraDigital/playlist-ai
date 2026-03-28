@@ -246,6 +246,14 @@ export default function App() {
     prevSongRef.current = prevSong;
   });
 
+  // Load SoundCloud Widget API once so we can bind FINISH events
+  useEffect(() => {
+    if (document.querySelector('script[src*="soundcloud.com/player/api"]')) return;
+    const script = document.createElement("script");
+    script.src = "https://w.soundcloud.com/player/api.js";
+    document.body.appendChild(script);
+  }, []);
+
   // Autoplay: listen for YouTube "ended" + SoundCloud "SOUND_FINISHED" via postMessage
   useEffect(() => {
     const handleMessage = (e) => {
@@ -254,7 +262,11 @@ export default function App() {
         const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (!data) return;
         // YouTube IFrame API: state 0 = ended
+        // Handles both formats: {event:"onStateChange",info:0} and {event:"infoDelivery",info:{playerState:0}}
         if (data.event === "onStateChange" && data.info === 0) {
+          nextSongRef.current?.();
+        }
+        if (data.event === "infoDelivery" && data.info?.playerState === 0) {
           nextSongRef.current?.();
         }
         // SoundCloud Widget API — check both possible event formats
@@ -1000,6 +1012,16 @@ export default function App() {
                     frameBorder="no"
                     src={buildSoundCloudUrl(currentSong.soundcloudUrl)}
                     allow="autoplay"
+                    onLoad={() => {
+                      // Bind FINISH event via SoundCloud Widget API
+                      try {
+                        if (!window.SC || !scIframeRef.current) return;
+                        const widget = window.SC.Widget(scIframeRef.current);
+                        widget.bind(window.SC.Widget.Events.FINISH, () => {
+                          if (autoplayRef.current) nextSongRef.current?.();
+                        });
+                      } catch {}
+                    }}
                   />
                   <p className="text-xs text-gray-500 text-center mt-1">{t.scRepeatNote}</p>
                 </>
@@ -1053,6 +1075,14 @@ export default function App() {
                   height="200"
                   src={`https://www.youtube.com/embed/${currentSong.videoId}?autoplay=1&enablejsapi=1&loop=${repeat ? 1 : 0}&playlist=${currentSong.videoId}`}
                   allow="autoplay; encrypted-media"
+                  onLoad={() => {
+                    // Tell the YouTube iframe we're listening — required to receive onStateChange events
+                    try {
+                      ytIframeRef.current?.contentWindow?.postMessage(
+                        JSON.stringify({ event: "listening", id: 1 }), "*"
+                      );
+                    } catch {}
+                  }}
                 />
               )}
 
